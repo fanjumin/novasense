@@ -547,6 +547,7 @@ func (m *FFmpegManager) StartMotionRecording(deviceID string) (*motionRec, error
 type Server struct {
 	store   *Store
 	ffmpeg  *FFmpegManager
+	director *Director
 	mux     *http.ServeMux
 	dataDir string
 }
@@ -640,6 +641,11 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/discover", s.handleDiscover)
 	s.mux.HandleFunc("/api/login", s.handleLogin)
 	s.mux.HandleFunc("/api/logout", s.handleLogout)
+	s.mux.HandleFunc("/api/director", s.handleDirector)
+	s.mux.HandleFunc("/api/director/sources", s.handleDirectorSources)
+	s.mux.HandleFunc("/api/director/switch", s.handleDirectorSwitch)
+	s.mux.HandleFunc("/api/director/overlays", s.handleDirectorOverlays)
+	s.mux.HandleFunc("/api/director/stop", s.handleDirectorStop)
 }
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
@@ -1811,10 +1817,11 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 func NewServer(store *Store, dataDir string) *Server {
 	initAuth()
 	s := &Server{
-		store:   store,
-		ffmpeg:  NewFFmpegManager(store, dataDir),
-		mux:     http.NewServeMux(),
-		dataDir: dataDir,
+		store:    store,
+		ffmpeg:   NewFFmpegManager(store, dataDir),
+		director: NewDirector(NewFFmpegManager(store, dataDir), store, dataDir),
+		mux:      http.NewServeMux(),
+		dataDir:  dataDir,
 	}
 	s.registerRoutes()
 

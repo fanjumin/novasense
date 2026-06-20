@@ -105,6 +105,15 @@ tr:hover td { background: #141e2a; }
 .stat-card { background:#111b25; border:1px solid #1a2a3a; border-radius:6px; padding:10px; text-align:center; }
 .stat-card .val { font-size:20px; font-weight:700; color:#00c8ff; }
 .stat-card .lbl { font-size:11px; color:#5a7288; margin-top:2px; }
+.dir-grid { display:flex; flex-direction:column; gap:8px; }
+.dir-main { background:#000; border:2px solid #00c8ff; border-radius:6px; height:360px; position:relative; overflow:hidden; }
+.dir-main video { width:100%; height:100%; object-fit:contain; }
+.dir-preview-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:6px; }
+.dir-preview { background:#000; border:1px solid #1a2a3a; border-radius:4px; height:150px; position:relative; overflow:hidden; cursor:pointer; transition:border-color .15s; }
+.dir-preview:hover { border-color:#3a5a6a; }
+.dir-preview.active { border-color:#7C4DFF; }
+.dir-preview video { width:100%; height:100%; object-fit:contain; }
+.dir-label { position:absolute; bottom:0; left:0; right:0; padding:4px 8px; background:rgba(0,0,0,0.7); font-size:11px; color:#c8d6e0; }
 .empty { text-align:center; padding:30px; color:#3a4a5a; font-size:13px; }
 .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:100; }
 .modal { background:#141e2a; border-radius:8px; padding:18px; max-width:520px; width:92%; max-height:80vh; overflow-y:auto; border:1px solid #1e2d3d; }
@@ -194,12 +203,19 @@ a { color:#00c8ff; text-decoration:none; }
 <!-- DIRECTOR -->
 <div id="tab-director" class="content">
   <div class="toolbar">
-    <span id="dirInfo" style="font-size:12px;color:#5a7288">启动摄像头后可进入导播</span>
+    <span id="dirStatus" style="font-size:12px;color:#5a7288">加载中...</span>
     <span style="flex:1"></span>
-    <button class="btn btn-sm btn-outline" onclick="renderDirector()">🔄 刷新</button>
+    <button class="btn btn-sm btn-primary" onclick="switchSource()">切换</button>
+    <button class="btn btn-sm btn-outline" onclick="stopPGM()">⏹ 停止</button>
+    <button class="btn btn-sm btn-outline" onclick="loadDirector()">🔄 刷新</button>
   </div>
-  <div id="dirContent" style="min-height:300px;display:flex;align-items:center;justify-content:center;color:#3a4a5a;font-size:13px">
-    暂无摄像头，先在监控页面添加
+  <div id="dirLayout" class="dir-grid" style="min-height:400px">
+    <div class="dir-main" id="dirPGM">
+      <div id="dirPGMPlaceholder" style="display:flex;align-items:center;justify-content:center;height:100%;color:#3a4a5a;font-size:14px">PGM 未启动</div>
+      <video id="dirPGMVid" muted autoplay playsinline style="display:none;width:100%;height:100%;object-fit:contain;background:#000"></video>
+      <div class="dir-label">🎬 PGM 输出</div>
+    </div>
+    <div id="dirPreview" class="dir-preview-grid"></div>
   </div>
 </div>
 
@@ -800,62 +816,87 @@ async function ptzPreset(id, num) {
 }
 
 // ===== DIRECTOR =====
-let dirActive = null;
+let dirSources = [];
+let selectedSource = null;
 
-async function renderDirector() {
-  const devs = await api('/api/devices');
-  const el = document.getElementById('dirContent');
-  if (!devs.length) {
-    el.innerHTML = '<div style="color:#3a4a5a;font-size:13px">暂无摄像头，先在监控页面添加</div>';
-    document.getElementById('dirInfo').textContent = '暂无摄像头';
-    return;
-  }
+async function loadDirector() {
+  // Get director status
+  const status = await api('/api/director');
+  if (!status || status.error) return;
 
-  for (const d of devs) {
-    if (!proxyStatus[d.id]) {
-      await api('/api/proxy/start/'+d.id, {method:'POST'});
-      proxyStatus[d.id] = true;
+  // Get sources
+  const sources = await api('/api/director/sources');
+  dirSources = sources || [];
+
+  document.getElementById('dirStatus').textContent =
+    'PGM: ' + (status.pgm?.status || 'idle') +
+    ' | 信号: ' + (sources?.length || 0) + ' 路';
+
+  // Render PGM
+  const pgmVid = document.getElementById('dirPGMVid');
+  const pgmPlace = document.getElementById('dirPGMPlaceholder');
+  if (status.pgm?.status === 'live') {
+    pgmVid.style.display = 'block';
+    pgmPlace.style.display = 'none';
+    if (!pgmVid.src || pgmVid.src.indexOf('director') < 0) {
+      pgmVid.src = MTX_HLS + status.pgm.output_url;
     }
+    pgmVid.play().catch(()=>{});
+  } else {
+    pgmVid.style.display = 'none';
+    pgmPlace.style.display = 'flex';
   }
 
-  if (!dirActive || !devs.find(d=>d.id===dirActive)) {
-    dirActive = devs[0].id;
+  // Render preview grid
+  const grid = document.getElementById('dirPreview');
+  let html = '';
+  for (const s of sources) {
+    if (s.type === 'black' || s.type === 'image') {
+      html += '<div class="dir-preview dir-sub'+(selectedSource===s.id?' active':'')+'" onclick="selectSource(\''+s.id+'\')">';
+      html += '<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#1a1a2e;color:#3a4a5a">';
+      html += s.type==='black'?'⏹ 黑场':'📊 测试图';
+      html += '</div>';
+      html += '<div class="dir-label">'+esc(s.name)+'</div></div>';
+      continue;
+    }
+    const hlsUrl = '/live/'+s.device_id+'/index.m3u8';
+    html += '<div class="dir-preview dir-sub'+(selectedSource===s.id?' active':'')+'" onclick="selectSource(\''+s.id+'\')">';
+    html += '<video muted autoplay playsinline src="'+MTX_HLS+hlsUrl+'"></video>';
+    html += '<div class="dir-label">'+esc(s.name)+'</div></div>';
   }
-
-  const main = devs.find(d=>d.id===dirActive) || devs[0];
-  const subs = devs.filter(d=>d.id!==main.id);
-
-  document.getElementById('dirInfo').textContent = devs.length+' 路 | 主屏: '+esc(main.name);
-
-  let html = '<div class="dir-grid">';
-
-  html += '<div class="dir-main">';
-  html += '<video id="dirMainVid" muted autoplay playsinline src="'+MTX_HLS+'/live/'+main.id+'/index.m3u8"></video>';
-  html += '<div class="dir-label">🎬 '+esc(main.name)+'</div>';
-  html += '</div>';
-
-  for (const d of subs) {
-    html += '<div class="dir-sub'+(d.id===dirActive?' active':'')+'" onclick="switchMainView(\''+d.id+'\')">';
-    html += '<video muted autoplay playsinline src="'+MTX_HLS+'/live/'+d.id+'/index.m3u8"></video>';
-    html += '<div class="dir-label">'+esc(d.name)+'</div>';
-    html += '</div>';
+  if (sources.length === 0) {
+    html = '<div style="grid-column:1/-1;display:flex;align-items:center;justify-content:center;color:#3a4a5a;font-size:13px;min-height:200px">暂无信号源</div>';
   }
-
-  if (subs.length === 0) {
-    html += '<div class="dir-sub" style="display:flex;align-items:center;justify-content:center;color:#3a4a5a;font-size:12px">只有一路画面<br>添加更多摄像头后自动显示</div>';
-  }
-
-  html += '</div>';
-  el.innerHTML = html;
+  grid.innerHTML = html;
 
   setTimeout(() => {
-    el.querySelectorAll('video').forEach(v => v.play().catch(()=>{}));
+    grid.querySelectorAll('video').forEach(v => v.play().catch(()=>{}));
   }, 500);
 }
 
-function switchMainView(id) {
-  dirActive = id;
-  renderDirector();
+function selectSource(id) {
+  selectedSource = id;
+  loadDirector();
+}
+
+async function switchSource() {
+  const id = selectedSource || (dirSources[0] && dirSources[0].id);
+  if (!id) { toast('请先选择一个信号源','i'); return; }
+  const r = await api('/api/director/switch', {method:'POST', body:{source_id:id, transition:'cut'}});
+  if (r.status === 'switched') {
+    toast('已切换到: '+id);
+    loadDirector();
+  } else {
+    toast(r.error||'切换失败','e');
+  }
+}
+
+async function stopPGM() {
+  const r = await api('/api/director/stop', {method:'POST'});
+  if (r.status === 'stopped') {
+    toast('PGM 已停止');
+    loadDirector();
+  }
 }
 
 // ===== RESOLUTION SWITCH =====
@@ -911,7 +952,7 @@ switchTab = function(name) {
   if (name==='recordings') loadRecordings();
   if (name==='schedule') loadSchedules();
   if (name==='snapshots') loadSnapshots();
-  if (name==='director') renderDirector();
+  if (name==='director') loadDirector();
   if (name==='motion') loadMotion();
   if (name==='status') loadStatus();
 };
