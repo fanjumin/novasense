@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/phone/manifest.json">
+<title>手机摄像头</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; color:#fff; font-family:sans-serif; height:100dvh; overflow:hidden; display:flex; flex-direction:column; }
+video { flex:1; width:100%; object-fit:contain; background:#111; }
+.controls { display:flex; align-items:center; gap:10px; padding:10px 12px; background:#1a1a2e; flex-wrap:wrap; }
+.controls button { background:#2a2a4a; border:none; color:#fff; padding:8px 14px; border-radius:6px; font-size:14px; cursor:pointer; }
+.controls button.active { background:#00c8ff; color:#000; }
+.controls button:disabled { opacity:0.4; }
+.controls select { background:#2a2a4a; color:#fff; border:none; padding:6px 10px; border-radius:4px; font-size:13px; }
+.controls label { font-size:12px; color:#8aa0b8; display:flex; align-items:center; gap:4px; }
+.status { position:absolute; top:10px; left:10px; font-size:11px; color:rgba(255,255,255,0.6); text-shadow:0 1px 3px rgba(0,0,0,0.8); pointer-events:none; z-index:10; }
+.flash { position:absolute; top:10px; right:10px; z-index:10; }
+.flash button { background:rgba(0,0,0,0.5); border:none; color:#fff; font-size:18px; width:36px; height:36px; border-radius:50%; cursor:pointer; }
+@media (orientation:landscape) { video { height:100%; } }
+</style>
+</head>
+<body>
+<div class="status" id="status">初始化摄像头...</div>
+<div class="flash"><button id="flashBtn" onclick="toggleFlash()">🔦</button></div>
+<video id="video" autoplay playsinline muted></video>
+<div class="controls">
+  <button id="streamBtn" onclick="toggleStream()">▶ 开始推流</button>
+  <select id="camSelect" onchange="switchCam(this.value)"></select>
+  <select id="resSelect" onchange="changeRes(this.value)">
+    <option value="640x480">480p</option>
+    <option value="1280x720" selected>720p</option>
+    <option value="1920x1080">1080p</option>
+  </select>
+  <label>🔦 <input type="range" min="0" max="1" step="0.1" value="0.5" onchange="setBrightness(this.value)" style="width:50px"></label>
+  <span id="fpsCounter" style="font-size:11px;color:#5a7288">0fps</span>
+</div>
+<script>
+const API = 'http://192.0.2.107:8899';
+const video = document.getElementById('video');
+const status = document.getElementById('status');
+const streamBtn = document.getElementById('streamBtn');
+let mediaStream = null;
+let pushInterval = null;
+let isStreaming = false;
+let fpsCount = 0, fpsTimer = 0;
+let deviceName = '手机摄像头';
+
+// 获取手机唯一ID
+let deviceId = localStorage.getItem('phoneDeviceId');
+if (!deviceId) {
+  deviceId = 'phone_' + Math.random().toString(36).slice(2, 10);
+  localStorage.setItem('phoneDeviceId', deviceId);
+}
+
+// 初始化摄像头
+async function initCam(facingMode) {
+  try {
+    if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); }
+    const constraints = {
+      video: { facingMode: facingMode || 'environment', width: {ideal:1280}, height: {ideal:720} },
+      audio: false
+    };
+    mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = mediaStream;
+    status.textContent = '摄像头就绪';
+    // 列举摄像头
+    const devices = await navigator.mediaDevices.enumerateUserMediaDevices?.() || [];
+    // 简单检测：有前置后置
+  } catch (e) {
+    status.textContent = '摄像头错误: '+e.message;
+  }
+}
+
+// 切换摄像头
+async function switchCam(label) {
+  const facing = label.includes('front') || label.includes('前置') ? 'user' : 'environment';
+  await initCam(facing);
+}
+
+// 切换分辨率
+function changeRes(res) {
+  if (!mediaStream) return;
+  const [w, h] = res.split('x').map(Number);
+  mediaStream.getVideoTracks().forEach(t => {
+    t.applyConstraints({width: {exact: w}, height: {exact: h}}).catch(()=>{});
+  });
+}
+
+// 亮度（前端滤镜）
+function setBrightness(val) {
+  video.style.filter = 'brightness('+val+')';
+}
+
+// 闪光灯
+async function toggleFlash() {
+  try {
+    const track = mediaStream?.getVideoTracks()[0];
+    const caps = track?.getCapabilities?.();
+    if (caps?.torch) {
+      const enabled = !track.getSettings().torch;
+      await track.applyConstraints({advanced: [{torch: enabled}]});
+    }
+  } catch(e) {}
+}
+
+// 推流到服务器
+async function toggleStream() {
+  if (isStreaming) {
+    stopStream();
+    return;
+  }
+  streamBtn.textContent = '连接中...';
+  streamBtn.disabled = true;
+
+  // 先注册设备
+  const name = '手机_' + deviceId.slice(-4);
+  const r = await fetch(API+'/api/devices', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({name: name, protocol:'phone', url:'phone://'+deviceId})
+  });
+  const dev = await r.json();
+  if (!dev.id) { status.textContent='注册失败'; streamBtn.disabled=false; return; }
+  deviceId = dev.id;
+  localStorage.setItem('phoneDeviceId', deviceId);
+
+  status.textContent = '推流中...';
+  streamBtn.textContent = '⏹ 停止';
+  streamBtn.disabled = false;
+  streamBtn.className = 'active';
+  isStreaming = true;
+
+  // 启动推流 - 持续抓帧上传
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  fpsCount = 0;
+
+  pushInterval = setInterval(async () => {
+    if (!isStreaming) return;
+    const track = mediaStream.getVideoTracks()[0];
+    if (!track) return;
+    const settings = track.getSettings();
+    canvas.width = settings.width || 1280;
+    canvas.height = settings.height || 720;
+    ctx.drawImage(video, 0, 0);
+    canvas.toBlob(async (blob) => {
+      try {
+        await fetch(API+'/api/phone/frame/'+deviceId, {
+          method:'POST',
+          body: blob,
+          headers:{'Content-Type':'image/jpeg'}
+        });
+        fpsCount++;
+      } catch(e) {
+        if (isStreaming) status.textContent = '推流中断';
+      }
+    }, 'image/jpeg', 70);
+  }, 100); // ~10fps
+}
+
+function stopStream() {
+  isStreaming = false;
+  if (pushInterval) { clearInterval(pushInterval); pushInterval = null; }
+  streamBtn.textContent = '▶ 开始推流';
+  streamBtn.className = '';
+  status.textContent = '已停止';
+}
+
+// FPS 计数
+setInterval(() => {
+  document.getElementById('fpsCounter').textContent = fpsCount + 'fps';
+  fpsCount = 0;
+}, 1000);
+
+// 启动
+initCam('environment');
+
+// 页面离开时停止
+window.addEventListener('beforeunload', stopStream);
+
+// 检测设备方向
+screen.orientation?.addEventListener('change', () => {
+  video.style.objectFit = screen.orientation.type.includes('portrait') ? 'contain' : 'contain';
+});
+</script>
+</body>
+</html>

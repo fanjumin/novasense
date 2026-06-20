@@ -1,0 +1,29 @@
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:latest-ffmpeg
+    restart: unless-stopped
+    network_mode: "host"
+    volumes:
+      - ./mediamtx/mediamtx.yml:/mediamtx.yml
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  app:
+    build: .
+    restart: unless-stopped
+    network_mode: "host"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - mediamtx
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  data:

@@ -1,0 +1,10 @@
+{
+  "name": "视频监控",
+  "short_name": "监控",
+  "start_url": "/phone/phone.html",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#000000",
+  "theme_color": "#1a1a2e",
+  "icons": []
+}

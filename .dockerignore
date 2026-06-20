@@ -1,0 +1,6 @@
+data/
+bin/
+.git/
+*.md
+SOLUTION.md
+venv/
