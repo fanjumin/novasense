@@ -1,31 +1,44 @@
-# syntax=docker/dockerfile:1
+# =============================================
+# Dockerfile — video-stream-manager backend
+# =============================================
+# Builds: Go backend + ffmpeg + wapa-pull
+# MediaMTX runs as a separate container (see docker-compose.yml)
+# =============================================
+
+# Stage 1: Build Go binary
 FROM golang:1.25-alpine AS builder
 
-RUN apk add --no-cache gcc musl-dev
+RUN apk add --no-cache git ca-certificates
 
 WORKDIR /build
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
 COPY backend/ .
-RUN CGO_ENABLED=0 go build -o video-stream-manager -ldflags="-s -w" .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o video-stream-manager .
 
-# --- runtime ---
-FROM alpine:3.21
+# Stage 2: Runtime
+FROM alpine:3.20
 
-RUN apk add --no-cache ffmpeg ca-certificates tzdata
+RUN apk add --no-cache ffmpeg=7.1-r0 ca-certificates tzdata
 
-WORKDIR /app
+# Backend binary
+COPY --from=builder /build/video-stream-manager /usr/local/bin/
 
-# MediaMTX will be mounted or run separately
-COPY --from=builder /build/video-stream-manager .
+# WAPA protocol helper (optional, for 波力 cameras)
+COPY bin/wapa-pull /usr/local/bin/wapa-pull
 
-# Create data directory
+# Frontend files
+COPY frontend/ /app/frontend/
+
+# MediaMTX config (shared with mediamtx container)
+COPY mediamtx/mediamtx.yml /app/mediamtx/mediamtx.yml
+
 RUN mkdir -p /app/data
+
+ENV DATA_DIR=/app/data
 
 EXPOSE 8899
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:8899/api/health || exit 1
-
-ENTRYPOINT ["./video-stream-manager"]
+WORKDIR /app
+CMD ["video-stream-manager"]

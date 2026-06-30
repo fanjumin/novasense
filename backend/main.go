@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -79,7 +80,9 @@ func isAuthenticated(r *http.Request) bool {
 var publicPaths = []string{
 	"/api/login",
 	"/api/health",
+	"/api/license/check",
 	"/ui/login.html",
+	"/NetCamPro.apk",
 }
 
 func isPublicPath(path string) bool {
@@ -104,6 +107,7 @@ type FFmpegManager struct {
 	retries    map[string]int
 	stopCh     chan struct{}
 	proxyCfgs  map[string]ProxyConfig // per-device proxy config
+	wapaBin    string                  // path to wapa-pull helper binary
 }
 
 type FFmpegProc struct {
@@ -124,6 +128,7 @@ func NewFFmpegManager(store *Store, dataDir string) *FFmpegManager {
 		retries:    make(map[string]int),
 		stopCh:     make(chan struct{}),
 		proxyCfgs:  make(map[string]ProxyConfig),
+		wapaBin:    filepath.Join(filepath.Dir(os.Args[0]), "..", "bin", "wapa-pull"),
 	}
 	go m.healthCheckLoop()
 	return m
@@ -165,15 +170,38 @@ func (m *FFmpegManager) detectResolution(deviceID string) ProxyConfig {
 		return ProxyConfig{}
 	}
 
-	// Quick ffprobe to detect native resolution
-	cmd := exec.Command("ffprobe", "-v", "quiet",
-		"-rtsp_transport", "tcp",
-		"-print_format", "json",
-		"-show_streams",
-		"-select_streams", "v:0",
-		device.URL)
+	// WAPA cameras: known resolution 1280x720 (BL-720Q-L)
+	if device.Protocol == "wapa" {
+		return ProxyConfig{
+			Width:   1280,
+			Height:  720,
+			Bitrate: "2000k",
+		}
+	}
 
-	out, err := cmd.Output()
+	// Quick ffprobe to detect native resolution
+	args := []string{"-v", "quiet", "-print_format", "json", "-show_streams", "-select_streams", "v:0"}
+	if strings.HasPrefix(device.URL, "http://") || strings.HasPrefix(device.URL, "https://") {
+		args = append([]string{"-f", "mjpeg"}, args...)
+	}
+	args = append(args, device.URL)
+
+	cmd := exec.Command("ffprobe", args...)
+
+	// Timeout after 5s to avoid hanging on unresponsive streams
+	done := make(chan struct{})
+	var out []byte
+	var err error
+	go func() {
+		out, err = cmd.Output()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		cmd.Process.Kill()
+		return ProxyConfig{}
+	}
 	if err != nil {
 		return ProxyConfig{}
 	}
@@ -226,7 +254,16 @@ func (m *FFmpegManager) buildProxyArgs(inputURL, rtmpDest string, cfg ProxyConfi
 	args := []string{
 		"-fflags", "nobuffer",
 		"-flags", "low_delay",
-		"-i", inputURL,
+	}
+
+	// WAPA cameras use pipe input from wapa-pull helper
+	if strings.HasPrefix(inputURL, "wapa://") {
+		args = append(args, "-f", "m4v", "-err_detect", "ignore_err", "-i", "pipe:0")
+	} else {
+		args = append(args, "-i", inputURL)
+	}
+
+	args = append(args,
 		"-c:v", "libx264",
 		"-preset", "ultrafast",
 		"-tune", "zerolatency",
@@ -236,8 +273,7 @@ func (m *FFmpegManager) buildProxyArgs(inputURL, rtmpDest string, cfg ProxyConfi
 		"-s", fmt.Sprintf("%dx%d", w, h),
 		"-r", "15",
 		"-pix_fmt", "yuv420p",
-		"-g", "15",
-		"-vf", "drawtext=text='%Y-%m-%d %H\\:%M\\:%S':x=10:y=10:fontcolor=white:fontsize=20:box=1:boxcolor=black@0.4:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+		"-g", "8",
 		"-c:a", "aac",
 		"-b:a", "64k",
 		"-ar", "16000",
@@ -246,7 +282,7 @@ func (m *FFmpegManager) buildProxyArgs(inputURL, rtmpDest string, cfg ProxyConfi
 		"-rtmp_live", "live",
 		"-flvflags", "no_duration_filesize",
 		rtmpDest,
-	}
+	)
 
 	// Add RTSP-specific flags only for RTSP URLs
 	if strings.HasPrefix(inputURL, "rtsp://") || strings.HasPrefix(inputURL, "rtsps://") {
@@ -256,6 +292,10 @@ func (m *FFmpegManager) buildProxyArgs(inputURL, rtmpDest string, cfg ProxyConfi
 	// For USB cameras (/dev/video*), add input format
 	if strings.HasPrefix(inputURL, "/dev/video") {
 		args = append([]string{"-f", "v4l2", "-input_format", "mjpeg", "-framerate", "15"}, args...)
+	}
+	// For HTTP MJPEG streams (IP Webcam style), force mjpeg demuxer
+	if strings.HasPrefix(inputURL, "http://") || strings.HasPrefix(inputURL, "https://") {
+		args = append([]string{"-f", "mjpeg"}, args...)
 	}
 
 	return args
@@ -278,7 +318,7 @@ func (m *FFmpegManager) StartLiveProxyWithConfig(deviceID string, cfg ProxyConfi
 			cfg.Width = detected.Width
 			cfg.Height = detected.Height
 			cfg.Bitrate = detected.Bitrate
-			log.Printf("[proxy] detected resolution for %s: %dx%d %s", deviceID[:8], cfg.Width, cfg.Height, cfg.Bitrate)
+			log.Printf("[proxy] detected resolution for %s: %dx%d %s", shortID(deviceID), cfg.Width, cfg.Height, cfg.Bitrate)
 		}
 	}
 
@@ -306,7 +346,45 @@ func (m *FFmpegManager) StartLiveProxyWithConfig(deviceID string, cfg ProxyConfi
 	args := m.buildProxyArgs(inputURL, rtmpDest, cfg)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+
+	var cmd *exec.Cmd
+	// WAPA cameras: pipe wapa-pull output into ffmpeg stdin
+	if device.Protocol == "wapa" {
+		ipPort := strings.TrimPrefix(device.URL, "wapa://")
+		if !strings.Contains(ipPort, ":") {
+			ipPort += ":9001"
+		}
+		// Use a FIFO — m4v demuxer handles files better than pipe:0
+		fifoPath := filepath.Join(os.TempDir(), fmt.Sprintf("wapa-%s.fifo", deviceID))
+		os.Remove(fifoPath)
+		syscall.Mkfifo(fifoPath, 0666)
+
+		// Open FIFO for both read and write — this doesn't block (unlike O_WRONLY)
+		fifoW, err := os.OpenFile(fifoPath, os.O_RDWR, 0)
+		if err != nil {
+			cancel()
+			<-m.sem
+			return fmt.Errorf("failed to open fifo: %v", err)
+		}
+		defer fifoW.Close()
+
+		// Start wapa-pull in background, writing to FIFO
+		pullCmd := exec.CommandContext(ctx, m.wapaBin, ipPort)
+		pullCmd.Stdout = fifoW
+		pullCmd.Stderr = nil
+		if err := pullCmd.Start(); err != nil {
+			cancel()
+			<-m.sem
+			return fmt.Errorf("failed to start wapa-pull: %v", err)
+		}
+		log.Printf("[proxy-%s] started wapa-pull for %s (pid %d)", shortID(deviceID), ipPort, pullCmd.Process.Pid)
+
+		// ffmpeg reads from FIFO like a file
+		fifoArgs := m.buildProxyArgs(fifoPath, rtmpDest, cfg)
+		cmd = exec.CommandContext(ctx, "ffmpeg", fifoArgs...)
+	} else {
+		cmd = exec.CommandContext(ctx, "ffmpeg", args...)
+	}
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
@@ -324,7 +402,7 @@ func (m *FFmpegManager) StartLiveProxyWithConfig(deviceID string, cfg ProxyConfi
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
-			log.Printf("[proxy-%s] %s", deviceID[:8], scanner.Text())
+			log.Printf("[proxy-%s] %s", shortID(deviceID), scanner.Text())
 		}
 	}()
 
@@ -369,7 +447,7 @@ func (m *FFmpegManager) StartLiveProxyWithConfig(deviceID string, cfg ProxyConfi
 
 			if shouldRestart {
 				log.Printf("[proxy-%s] exited: %v — retry %d, backoff %v",
-					deviceID[:8], err, retries+1, backoff)
+					shortID(deviceID), err, retries+1, backoff)
 				time.Sleep(backoff)
 				m.StartLiveProxy(deviceID)
 			}
@@ -512,7 +590,7 @@ func (m *FFmpegManager) StartMotionRecording(deviceID string) (*motionRec, error
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
-			log.Printf("[motion-rec-%s] %s", deviceID[:8], scanner.Text())
+			log.Printf("[motion-rec-%s] %s", shortID(deviceID), scanner.Text())
 		}
 	}()
 
@@ -531,7 +609,7 @@ func (m *FFmpegManager) StartMotionRecording(deviceID string) (*motionRec, error
 				EventType: "motion",
 			}
 			m.store.AddRecording(rec)
-			log.Printf("[motion-rec-%s] saved: %s (%.1fMB)", deviceID[:8], filePath, float64(fi.Size())/1e6)
+			log.Printf("[motion-rec-%s] saved: %s (%.1fMB)", shortID(deviceID), filePath, float64(fi.Size())/1e6)
 		}
 	}()
 
@@ -545,11 +623,12 @@ func (m *FFmpegManager) StartMotionRecording(deviceID string) (*motionRec, error
 // ============ HTTP API ============
 
 type Server struct {
-	store   *Store
-	ffmpeg  *FFmpegManager
+	store    *Store
+	ffmpeg   *FFmpegManager
 	director *Director
-	mux     *http.ServeMux
-	dataDir string
+	disco    *DiscoveryManager
+	mux      *http.ServeMux
+	dataDir  string
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -639,13 +718,22 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/motion/events/", s.handleMotionEvents)
 	s.mux.HandleFunc("/api/phone/frame/", s.handlePhoneFrame)
 	s.mux.HandleFunc("/api/discover", s.handleDiscover)
+	s.mux.HandleFunc("/api/discover/start", s.handleDiscoverStart)
+	s.mux.HandleFunc("/api/discover/stop", s.handleDiscoverStop)
+	s.mux.HandleFunc("/api/discover/status", s.handleDiscoverStatus)
+	s.mux.HandleFunc("/api/discover/import", s.handleDiscoverImport)
 	s.mux.HandleFunc("/api/login", s.handleLogin)
 	s.mux.HandleFunc("/api/logout", s.handleLogout)
+	s.mux.HandleFunc("/api/license/generate", s.handleLicenseGenerate)
+	s.mux.HandleFunc("/api/license/check", s.handleLicenseCheck)
+	s.mux.HandleFunc("/api/license/bind", s.handleLicenseBind)
+	s.mux.HandleFunc("/api/license/list", s.handleLicenseList)
 	s.mux.HandleFunc("/api/director", s.handleDirector)
 	s.mux.HandleFunc("/api/director/sources", s.handleDirectorSources)
 	s.mux.HandleFunc("/api/director/switch", s.handleDirectorSwitch)
 	s.mux.HandleFunc("/api/director/overlays", s.handleDirectorOverlays)
 	s.mux.HandleFunc("/api/director/stop", s.handleDirectorStop)
+	s.mux.HandleFunc("/api/director/push", s.handleDirectorPush)
 }
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
@@ -704,6 +792,15 @@ func (s *Server) handleDeviceByID(w http.ResponseWriter, r *http.Request) {
 	default:
 		s.error(w, "method not allowed", 405)
 	}
+}
+
+// shortID returns the first 8 characters of a device ID, or the full
+// ID if shorter than 8.  Used for logging prefixes.
+func shortID(id string) string {
+	if len(id) > 8 {
+		return id[:8]
+	}
+	return id
 }
 
 func checkDeviceOnline(url string) string {
@@ -1643,7 +1740,7 @@ func (s *Server) handlePhoneFrame(w http.ResponseWriter, r *http.Request) {
 			ps.running = true
 			ps.mu.Unlock()
 			if err := cmd.Start(); err != nil {
-				log.Printf("[phone-%s] ffmpeg start failed: %v", deviceID[:8], err)
+				log.Printf("[phone-%s] ffmpeg start failed: %v", shortID(deviceID), err)
 				ps.mu.Lock()
 				ps.running = false
 				ps.mu.Unlock()
@@ -1680,80 +1777,117 @@ func (s *Server) handleDiscover(w http.ResponseWriter, r *http.Request) {
 		s.error(w, "method not allowed", 405)
 		return
 	}
+	// Return current discovery progress
+	s.json(w, s.disco.GetProgress())
+}
 
-	var results []map[string]string
+func (s *Server) handleDiscoverStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		s.error(w, "method not allowed", 405)
+		return
+	}
+	localIP := getLocalIP()
+	if err := s.disco.StartScan(localIP); err != nil {
+		s.error(w, err.Error(), 400)
+		return
+	}
+	s.json(w, map[string]string{"status": "scan_started"})
+}
 
-	// 1. Scan local network for common RTSP ports
-	// Get local LAN
-	ifaces, _ := net.Interfaces()
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
+func (s *Server) handleDiscoverStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		s.error(w, "method not allowed", 405)
+		return
+	}
+	s.disco.StopScan()
+	s.json(w, map[string]string{"status": "scan_stopped"})
+}
+
+func (s *Server) handleDiscoverStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		s.error(w, "method not allowed", 405)
+		return
+	}
+	s.json(w, s.disco.GetProgress())
+}
+
+func (s *Server) handleDiscoverImport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		s.error(w, "method not allowed", 405)
+		return
+	}
+	var req struct {
+		IPs []string `json:"ips"` // which discovered device IPs to import
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, "invalid JSON", 400)
+		return
+	}
+
+	prog := s.disco.GetProgress()
+	imported := 0
+	for _, ip := range req.IPs {
+		dd, ok := prog.Results[ip]
+		if !ok {
 			continue
 		}
-		addrs, _ := iface.Addrs()
-		for _, addr := range addrs {
-			ipnet, ok := addr.(*net.IPNet)
-			if !ok || ipnet.IP.IsLoopback() || ipnet.IP.To4() == nil {
-				continue
-			}
-			// Scan common ports on the subnet
-			ip := ipnet.IP.Mask(ipnet.Mask)
-			ip[3] = 1 // start from .1
-			for i := 1; i < 255 && len(results) < 20; i++ {
-				ip[3] = byte(i)
-				target := ip.String()
-				if target == ipnet.IP.String() {
-					continue // skip self
-				}
-				// Quick port check: RTSP (554), HTTP (80), ONVIF (5000), IP Webcam (8080)
-				for _, port := range []int{554, 80, 5000, 8080} {
-					addr := fmt.Sprintf("%s:%d", target, port)
-					conn, err := net.DialTimeout("tcp", addr, time.Millisecond*300)
-					if err != nil {
-						continue
-					}
-					conn.Close()
-					if port == 554 {
-						results = append(results, map[string]string{
-							"ip": target, "port": "554", "protocol": "rtsp",
-							"url": fmt.Sprintf("rtsp://%s:554/ch1/main/av_stream", target),
-						})
-					} else if port == 80 {
-						// Try to detect if it's a camera web interface
-						results = append(results, map[string]string{
-							"ip": target, "port": "80", "protocol": "http",
-							"url": fmt.Sprintf("http://%s/", target),
-						})
-					} else if port == 5000 {
-						results = append(results, map[string]string{
-							"ip": target, "port": "5000", "protocol": "onvif",
-							"url": fmt.Sprintf("http://%s:5000/onvif/device_service", target),
-						})
-					} else if port == 8080 {
-						results = append(results, map[string]string{
-							"ip": target, "port": "8080", "protocol": "mjpeg",
-							"url": fmt.Sprintf("http://%s:8080/video", target),
-						})
-					}
-					break
-				}
-			}
-			break // only scan first LAN
+		// Determine the URL to use
+		url := ""
+		protocol := "rtsp"
+		if len(dd.RTSPURLs) > 0 {
+			url = dd.RTSPURLs[0]
+			protocol = dd.Protocol
+		} else if dd.HTTPURL != "" {
+			url = dd.HTTPURL
+			protocol = "http-mjpeg"
+		} else if dd.Protocol == "usb" {
+			url = dd.HWAddr
+			protocol = "usb"
 		}
-	}
-
-	// 2. Check for USB cameras
-	for i := 0; i < 10; i++ {
-		devPath := fmt.Sprintf("/dev/video%d", i)
-		if _, err := os.Stat(devPath); err == nil {
-			results = append(results, map[string]string{
-				"ip": devPath, "port": "", "protocol": "usb",
-				"url": devPath,
-			})
+		if url == "" {
+			continue
 		}
-	}
 
-	s.json(w, results)
+		name := dd.BrandCN
+		if name == "" {
+			name = "Camera-" + dd.IP
+		}
+		device := &Device{
+			ID:        generateID(),
+			Name:      name,
+			Protocol:  protocol,
+			URL:       url,
+			Status:    "offline",
+			CreatedAt: time.Now().Format(time.RFC3339),
+		}
+		s.store.AddDevice(device)
+		imported++
+		log.Printf("[discovery] imported device: %s (%s)", device.Name, url)
+
+		// Auto-start proxy
+		go s.ffmpeg.StartLiveProxy(device.ID)
+	}
+	s.json(w, map[string]interface{}{
+		"status":    "ok",
+		"imported":  imported,
+		"requested": len(req.IPs),
+	})
+}
+
+func getLocalIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return "127.0.0.1"
+	}
+	defer conn.Close()
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String()
+}
+
+func generateID() string {
+	b := make([]byte, 4)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 // ============ Auth Handlers ============
@@ -1810,7 +1944,78 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 		HttpOnly: true,
 	})
-	s.json(w, map[string]string{"status": "logged_out"})
+		s.json(w, map[string]string{"status": "logged_out"})
+}
+
+// ============ License Handlers ============
+
+func (s *Server) handleLicenseGenerate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		s.error(w, "method not allowed", 405)
+		return
+	}
+	var req struct {
+		IsPro bool   `json:"is_pro"`
+		Note  string `json:"note"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, "invalid JSON", 400)
+		return
+	}
+	key := s.store.GenerateLicense(req.IsPro, req.Note)
+	s.json(w, map[string]interface{}{"key": key, "status": "created"})
+}
+
+func (s *Server) handleLicenseCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		s.error(w, "method not allowed", 405)
+		return
+	}
+	var req struct {
+		Key string `json:"key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, "invalid JSON", 400)
+		return
+	}
+	lic := s.store.CheckLicense(req.Key)
+	if lic == nil {
+		s.json(w, map[string]interface{}{"valid": false, "is_pro": false})
+		return
+	}
+	s.json(w, map[string]interface{}{"valid": true, "is_pro": lic.IsPro, "device_id": lic.DeviceID})
+}
+
+func (s *Server) handleLicenseBind(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		s.error(w, "method not allowed", 405)
+		return
+	}
+	var req struct {
+		Key      string `json:"key"`
+		DeviceID string `json:"device_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, "invalid JSON", 400)
+		return
+	}
+	if s.store.BindLicense(req.Key, req.DeviceID) {
+		s.json(w, map[string]string{"status": "bound"})
+	} else {
+		s.error(w, "license already bound or not found", 400)
+	}
+}
+
+func (s *Server) handleLicenseList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		s.error(w, "method not allowed", 405)
+		return
+	}
+	lics := s.store.ListLicenses()
+	if lics == nil {
+		lics = []*License{}
+	}
+	s.json(w, lics)
 }
 
 // Update NewServer to start motion detector
@@ -1820,6 +2025,7 @@ func NewServer(store *Store, dataDir string) *Server {
 		store:    store,
 		ffmpeg:   NewFFmpegManager(store, dataDir),
 		director: NewDirector(NewFFmpegManager(store, dataDir), store, dataDir),
+		disco:    NewDiscoveryManager(),
 		mux:      http.NewServeMux(),
 		dataDir:  dataDir,
 	}
@@ -1849,7 +2055,10 @@ func NewServer(store *Store, dataDir string) *Server {
 }
 
 func main() {
-	dataDir := "/home/deployuser/projects/video-stream-manager/data"
+	dataDir := os.Getenv("DATA_DIR")
+	if dataDir == "" {
+		dataDir = "/app/data"
+	}
 	os.MkdirAll(dataDir, 0755)
 
 	videosDir := filepath.Join(dataDir, "videos")

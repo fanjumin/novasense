@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os/exec"
 	"strings"
@@ -32,11 +33,12 @@ type DirectorSource struct {
 
 type DirectorPGM struct {
 	SourceID    string `json:"source_id"`
-	Status      string `json:"status"`     // idle / live / transitioning
-	OutputURL   string `json:"output_url"` // HLS output URL
-	PushURL     string `json:"push_url"`   // RTMP push URL (optional)
+	Status      string `json:"status"`
+	OutputURL   string `json:"output_url"`
+	PushURL     string `json:"push_url"`
 	StartedAt   time.Time `json:"started_at"`
-	ProgramPID  int       `json:"-"`       // FFmpeg process PID
+	ProgramPID  int       `json:"-"`
+	generation  int       // 防止旧 goroutine 覆盖新状态的版本号
 	stopChan    chan struct{}
 }
 
@@ -123,17 +125,32 @@ func (d *Director) SwitchTo(sourceID string, transition string) error {
 
 	source, ok := d.sources[sourceID]
 	if !ok {
-		return fmt.Errorf("source %s not found", sourceID)
+		// Sync sources and retry
+		d.mu.Unlock()
+		d.SyncSources()
+		d.mu.Lock()
+		// After re-lock, check again
+		source, ok = d.sources[sourceID]
+		if !ok {
+			d.pgm.Status = "idle"
+			return fmt.Errorf("source %s not found after sync", sourceID)
+		}
+		// Continue normally - defer unlock will handle it
 	}
 
-	// Stop current PGM
+	// Stop current PGM and wait for it to fully exit
 	if d.pgm.stopChan != nil {
 		close(d.pgm.stopChan)
 	}
 	if d.pgm.ProgramPID > 0 {
 		exec.Command("kill", fmt.Sprintf("%d", d.pgm.ProgramPID)).Run()
+		for i := 0; i < 10; i++ {
+			if exec.Command("kill", "-0", fmt.Sprintf("%d", d.pgm.ProgramPID)).Run() != nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
-
 	d.pgm.Status = "transitioning"
 	d.pgm.SourceID = sourceID
 
@@ -155,19 +172,24 @@ func (d *Director) SwitchTo(sourceID string, transition string) error {
 	args = append(args, inputArgs...)
 	if len(filterArgs) > 0 {
 		args = append(args, filterArgs...)
+		args = append(args, "-c:v", "libx264", "-preset", "ultrafast", "-g", "30", "-r", "30")
 	} else {
 		// If no filter, just pass through video
 		args = append(args, "-c:v", "libx264", "-preset", "ultrafast", "-g", "30", "-r", "30")
 	}
-	args = append(args, "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-f", "flv", hlsURL)
-
 	if d.pgm.PushURL != "" {
-		// Dual output: HLS + push
-		args = append(args, "-f", "tee",
+		// Dual output via tee: HLS + push in one process
+		args = append(args, "-c:a", "aac", "-ar", "44100", "-b:a", "128k",
+			"-f", "tee",
 			fmt.Sprintf("[f=flv]%s|[f=flv]%s", hlsURL, d.pgm.PushURL))
+	} else {
+		// Single output: HLS only
+		args = append(args, "-c:a", "aac", "-ar", "44100", "-b:a", "128k",
+			"-f", "flv", hlsURL)
 	}
 
 	ffmpegBin := detectFFmpegPath()
+	log.Printf("[director] switching to %s: %s %v", sourceID, ffmpegBin, args)
 	cmd := exec.Command(ffmpegBin, args...)
 	if err := cmd.Start(); err != nil {
 		d.pgm.Status = "idle"
@@ -178,15 +200,20 @@ func (d *Director) SwitchTo(sourceID string, transition string) error {
 	d.pgm.Status = "live"
 	d.pgm.StartedAt = time.Now()
 	d.pgm.OutputURL = "/live/director/index.m3u8"
+	d.pgm.generation++
+	gen := d.pgm.generation
 	d.pgm.stopChan = make(chan struct{})
 
 	// Monitor process
 	go func() {
 		cmd.Wait()
 		d.mu.Lock()
-		d.pgm.Status = "idle"
-		d.pgm.ProgramPID = 0
-		d.mu.Unlock()
+		defer d.mu.Unlock()
+		// Only reset if no new generation has started
+		if d.pgm.generation == gen {
+			d.pgm.Status = "idle"
+			d.pgm.ProgramPID = 0
+		}
 	}()
 
 	return nil
@@ -239,15 +266,34 @@ func (d *Director) RemoveOverlay(id string) {
 
 func (d *Director) SetPushURL(url string) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
 	d.pgm.PushURL = url
+	d.mu.Unlock()
+
+	// If PGM is live, restart with new push URL
+	if d.pgm.Status == "live" {
+		go func() {
+			_ = d.SwitchTo(d.pgm.SourceID, "cut")
+		}()
+	}
+}
+
+func (d *Director) StopPush() {
+	d.mu.Lock()
+	d.pgm.PushURL = ""
+	d.mu.Unlock()
+
+	// If PGM is live, restart without push
+	if d.pgm.Status == "live" {
+		go func() {
+			_ = d.SwitchTo(d.pgm.SourceID, "cut")
+		}()
+	}
 }
 
 func (d *Director) buildInputArgs(source *DirectorSource) []string {
 	switch source.Type {
 	case "camera":
-		// Get the HLS URL from the live proxy
-		return []string{"-i", source.URL, "-fflags", "nobuffer", "-flags", "low_delay"}
+		return []string{"-fflags", "nobuffer", "-flags", "low_delay", "-i", source.URL}
 	case "black":
 		return []string{"-f", "lavfi", "-i", "color=c=#1a1a2e:s=1920x1080:r=30", "-f", "lavfi", "-i", "anullsrc"}
 	case "image":
@@ -261,6 +307,7 @@ func (d *Director) buildFilterArgs(sourceID string) []string {
 	var filters []string
 	hasVideoFilter := false
 	audioLabel := "0:a"
+	prevLabel := "0:v"
 
 	for _, o := range d.overlays {
 		if !o.Enabled {
@@ -276,17 +323,23 @@ func (d *Director) buildFilterArgs(sourceID string) []string {
 				o.FontSize = 24
 			}
 			escaped := strings.ReplaceAll(o.Text, "'", "'\\\\\\''")
+			nextLabel := fmt.Sprintf("[v%d]", len(filters))
 			filters = append(filters,
-				fmt.Sprintf("drawtext=text='%s':fontsize=%d:fontcolor=%s:x=%d:y=%d",
-					escaped, o.FontSize, o.Color, o.X, o.Y))
+				fmt.Sprintf("%sdrawtext=text='%s':fontsize=%d:fontcolor=%s:x=%d:y=%d%s",
+					prevLabel, escaped, o.FontSize, o.Color, o.X, o.Y, nextLabel))
+			prevLabel = nextLabel
 		case "logo":
+			nextLabel := fmt.Sprintf("[v%d]", len(filters))
 			filters = append(filters,
-				fmt.Sprintf("movie='%s'[logo];[0:v][logo]overlay=%d:%d",
-					o.Image, o.X, o.Y))
+				fmt.Sprintf("movie='%s'[logo];%s[logo]overlay=%d:%d%s",
+					o.Image, prevLabel, o.X, o.Y, nextLabel))
+			prevLabel = nextLabel
 		case "pip":
+			nextLabel := fmt.Sprintf("[v%d]", len(filters))
 			filters = append(filters,
-				fmt.Sprintf("[0:v]scale=%d:%d[bg];[1:v]scale=%d:%d[pip];[bg][pip]overlay=%d:%d",
-					1920, 1080, o.Width, o.Height, o.X, o.Y))
+				fmt.Sprintf("%sscale=%d:%d[bg];[bg][1:v]scale=%d:%d[pip];[bg][pip]overlay=%d:%d%s",
+					prevLabel, 1920, 1080, o.Width, o.Height, o.X, o.Y, nextLabel))
+			prevLabel = nextLabel
 		}
 	}
 
@@ -294,7 +347,14 @@ func (d *Director) buildFilterArgs(sourceID string) []string {
 		return nil
 	}
 
+	// Rename last label to [out]
 	filterStr := strings.Join(filters, ",")
+	if prevLabel != "" {
+		lastIdx := strings.LastIndex(filterStr, prevLabel)
+		if lastIdx >= 0 {
+			filterStr = filterStr[:lastIdx] + "[out]" + filterStr[lastIdx+len(prevLabel):]
+		}
+	}
 	return []string{"-filter_complex", filterStr, "-map", "[out]", "-map", audioLabel}
 }
 
@@ -385,4 +445,25 @@ func (s *Server) handleDirectorStop(w http.ResponseWriter, r *http.Request) {
 	}
 	s.director.Stop()
 	s.json(w, map[string]string{"status": "stopped"})
+}
+
+func (s *Server) handleDirectorPush(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		s.error(w, "method not allowed", 405)
+		return
+	}
+	var req struct {
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, "invalid JSON", 400)
+		return
+	}
+	if req.URL == "" {
+		s.director.StopPush()
+		s.json(w, map[string]string{"status": "push_stopped"})
+		return
+	}
+	s.director.SetPushURL(req.URL)
+	s.json(w, map[string]string{"status": "push_set", "url": req.URL})
 }

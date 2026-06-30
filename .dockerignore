@@ -1,6 +1,10 @@
+.git/
+.gitignore
+*.md
 data/
 bin/
-.git/
-*.md
-SOLUTION.md
+backend/video-stream-manager
 venv/
+images/
+deploy/
+scripts/

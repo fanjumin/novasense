@@ -1,29 +1,46 @@
+# ============================================
+# 视频流管理平台 v0.3.0 — Docker 部署
+# ============================================
+# 使用方法:
+#   docker compose up -d
+#   docker compose logs -f
+# 访问: http://localhost:8899
+# ============================================
+
 services:
   mediamtx:
-    image: bluenviron/mediamtx:latest-ffmpeg
+    image: bluenviron/mediamtx:1.10.0
+    container_name: nms-mediamtx
     restart: unless-stopped
-    network_mode: "host"
+    network_mode: host
     volumes:
-      - ./mediamtx/mediamtx.yml:/mediamtx.yml
+      - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
 
-  app:
-    build: .
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nms-backend
     restart: unless-stopped
-    network_mode: "host"
-    volumes:
-      - ./data:/app/data
+    network_mode: host
     depends_on:
       - mediamtx
+    environment:
+      - DATA_DIR=/app/data
+    volumes:
+      # 持久数据（数据库、录像、抓拍）
+      - ./data:/app/data
+      # 前端文件（方便热更新）
+      - ./frontend:/app/frontend:ro
+      # MediaMTX 配置（共享）
+      - ./mediamtx/mediamtx.yml:/app/mediamtx/mediamtx.yml:ro
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-
-volumes:
-  data:

@@ -25,7 +25,11 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #0a0e14; 
 .live-grid.cols4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
 @media (max-width:900px) { .live-grid.cols3,.live-grid.cols4 { grid-template-columns: 1fr 1fr; } }
 @media (max-width:600px) { .live-grid { grid-template-columns: 1fr; } }
-.live-card { background: #0a121a; border: 1px solid #1a2a3a; border-radius: 6px; overflow: hidden; position:relative; }
+.live-card { background: #0a121a; border: 1px solid #1a2a3a; border-radius: 6px; overflow: hidden; position:relative; cursor: grab; }
+.live-card:active { cursor: grabbing; }
+.live-card.drag-over { border-color: #00c8ff; box-shadow: 0 0 8px rgba(0,200,255,0.3); }
+.live-card.dragging { opacity: 0.4; }
+.live-card.drag-placeholder { border: 2px dashed #00c8ff; background: rgba(0,200,255,0.05); min-height: 200px; }
 .live-card video { width: 100%; aspect-ratio: 16/9; background: #060a0f; display: block; object-fit: contain; cursor: pointer; }
 .live-card video::-webkit-media-controls { display:none !important; }
 .live-card .info-bar { padding: 6px 8px; display: flex; align-items: center; justify-content: space-between; }
@@ -95,6 +99,18 @@ tr:hover td { background: #141e2a; }
 .btn-outline { background:transparent; border:1px solid #2a3a4a; color:#8aa0b8; }
 .btn-outline:hover { background:#1a2a3a; }
 .btn-warning { background:#8a6a00; color:#fff; }
+/* Discovery styles */
+.device-icon { font-size:16px; }
+.device-type-camera { color:#69f0ae; }
+.device-type-ac { color:#40c4ff; }
+.device-type-router { color:#ffab91; }
+.device-type-nas { color:#b39ddb; }
+.device-type-printer { color:#a0a0a0; }
+.device-type-appliance { color:#80cbc4; }
+.device-type-display { color:#f48fb1; }
+.device-type-smart-home { color:#aed581; }
+.device-type-unknown { color:#6b8299; }
+.discover-checkbox { width:18px; height:18px; cursor:pointer; }
 .toolbar { display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
 .form-group { margin-bottom:8px; }
 .form-group label { display:block; font-size:12px; color:#6b8299; margin-bottom:3px; }
@@ -147,6 +163,7 @@ a { color:#00c8ff; text-decoration:none; }
   <div class="tab" onclick="switchTab('snapshots')">📸 抓拍</div>
   <div class="tab" onclick="switchTab('director')">🎬 导播</div>
   <div class="tab" onclick="switchTab('motion')">🏃 运动</div>
+  <div class="tab" onclick="switchTab('discover')">📡 发现</div>
   <div class="tab" onclick="switchTab('status')">📊 状态</div>
 </div>
 
@@ -209,6 +226,13 @@ a { color:#00c8ff; text-decoration:none; }
     <button class="btn btn-sm btn-outline" onclick="stopPGM()">⏹ 停止</button>
     <button class="btn btn-sm btn-outline" onclick="loadDirector()">🔄 刷新</button>
   </div>
+  <div style="display:flex;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid #1a2a3a;margin-bottom:6px">
+    <span style="font-size:11px;color:#5a7288">推流地址:</span>
+    <input type="text" id="pushURL" placeholder="rtmp://live.douyin.com/..." 
+      style="flex:1;padding:4px 6px;background:#0a1018;border:1px solid #1a2a3a;border-radius:4px;color:#c8d6e0;font-size:12px">
+    <button class="btn btn-sm btn-primary" onclick="startPush()" style="font-size:11px">▶ 推流</button>
+    <button class="btn btn-sm btn-outline" onclick="stopPush()" style="font-size:11px">⏹ 停止</button>
+  </div>
   <div id="dirLayout" class="dir-grid" style="min-height:400px">
     <div class="dir-main" id="dirPGM">
       <div id="dirPGMPlaceholder" style="display:flex;align-items:center;justify-content:center;height:100%;color:#3a4a5a;font-size:14px">PGM 未启动</div>
@@ -227,6 +251,39 @@ a { color:#00c8ff; text-decoration:none; }
   </div>
   <div id="motionCards" class="live-grid cols2"></div>
   <div id="motionTimeline" style="margin-top:12px"></div>
+</div>
+
+<!-- DISCOVERY -->
+<div id="tab-discover" class="content">
+  <div class="toolbar">
+    <button class="btn btn-primary" id="scanBtn" onclick="startScan()">🔍 扫描局域网</button>
+    <button class="btn btn-outline" onclick="stopScan()">⏹ 停止</button>
+    <button class="btn btn-outline" onclick="loadDiscover()">🔄 刷新</button>
+    <span style="flex:1"></span>
+    <span id="scanProgress" style="font-size:12px;color:#5a7288"></span>
+  </div>
+  <div class="card" style="padding:0">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:30px"><input type="checkbox" id="discoverSelectAll" onchange="toggleAllDiscover(this.checked)"></th>
+          <th>类型</th>
+          <th>品牌</th>
+          <th>IP地址</th>
+          <th>端口</th>
+          <th>协议</th>
+          <th>方法</th>
+          <th>置信度</th>
+          <th>RTSP路径</th>
+        </tr>
+      </thead>
+      <tbody id="discoverTable"></tbody>
+    </table>
+  </div>
+  <div class="toolbar" style="margin-top:6px">
+    <button class="btn btn-success" onclick="importSelected()">📥 导入选中设备</button>
+    <span id="importStatus" style="font-size:12px;color:#5a7288;margin-left:8px"></span>
+  </div>
 </div>
 
 <!-- STATUS -->
@@ -352,12 +409,31 @@ function switchTab(name) {
 
 // ===== LIVE =====
 async function renderLive() {
-  const devs = await api('/api/devices');
-  const grid = document.getElementById('liveGrid');
+  var devs = await api('/api/devices');
+  var grid = document.getElementById('liveGrid');
+
+  // Apply saved drag order from localStorage
+  var savedOrder = loadCardOrder();
+  if (savedOrder && savedOrder.length > 0) {
+    var sorted = [];
+    var devMap = {};
+    devs.forEach(function(d){ devMap[d.id] = d; });
+    // First add saved-order devices that still exist
+    savedOrder.forEach(function(id) {
+      if (devMap[id]) {
+        sorted.push(devMap[id]);
+        delete devMap[id];
+      }
+    });
+    // Then add any new devices not yet in saved order
+    Object.keys(devMap).forEach(function(id) { sorted.push(devMap[id]); });
+    devs = sorted;
+  }
 
   let cards = devs.map(d => {
     const w = proxyStatus[d.id] || false;
-    return `<div class="live-card" id="lv-${d.id}">
+    return `<div class="live-card" id="lv-${d.id}" draggable="true"
+      ondragstart="dragStart(event,'${d.id}')" ondragover="dragOver(event)" ondrop="dropCard(event,'${d.id}')" ondragend="dragEnd(event)">
       <div id="lvPrev-${d.id}" class="preview" ${w?'style="display:none"':''}>
         <div class="icon">📷</div>
         <div>${esc(d.name)} <span style="color:${d.status==='online'?'#69f0ae':'#ef9a9a'}">●</span></div>
@@ -818,13 +894,12 @@ async function ptzPreset(id, num) {
 // ===== DIRECTOR =====
 let dirSources = [];
 let selectedSource = null;
+let dirRefreshTimer = null;
 
 async function loadDirector() {
-  // Get director status
   const status = await api('/api/director');
   if (!status || status.error) return;
 
-  // Get sources
   const sources = await api('/api/director/sources');
   dirSources = sources || [];
 
@@ -832,7 +907,7 @@ async function loadDirector() {
     'PGM: ' + (status.pgm?.status || 'idle') +
     ' | 信号: ' + (sources?.length || 0) + ' 路';
 
-  // Render PGM
+  // Update PGM display without touching preview grid
   const pgmVid = document.getElementById('dirPGMVid');
   const pgmPlace = document.getElementById('dirPGMPlaceholder');
   if (status.pgm?.status === 'live') {
@@ -847,22 +922,38 @@ async function loadDirector() {
     pgmPlace.style.display = 'flex';
   }
 
-  // Render preview grid
+  // Render preview grid only if empty
   const grid = document.getElementById('dirPreview');
+  if (!grid.children.length || grid.children.length !== sources.length) {
+    renderPreviewGrid(grid, sources);
+  } else {
+    // Just update active class
+    grid.querySelectorAll('.dir-sub').forEach(el => {
+      el.classList.toggle('active', el.dataset.sourceId === selectedSource);
+    });
+  }
+
+  // Auto-refresh PGM status every 5s (don't reload grid)
+  clearTimeout(dirRefreshTimer);
+  dirRefreshTimer = setTimeout(loadDirector, 5000);
+}
+
+function renderPreviewGrid(grid, sources) {
   let html = '';
   for (const s of sources) {
+    const active = selectedSource === s.id ? ' active' : '';
     if (s.type === 'black' || s.type === 'image') {
-      html += '<div class="dir-preview dir-sub'+(selectedSource===s.id?' active':'')+'" onclick="selectSource(\''+s.id+'\')">';
-      html += '<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#1a1a2e;color:#3a4a5a">';
-      html += s.type==='black'?'⏹ 黑场':'📊 测试图';
+      html += '<div class="dir-preview dir-sub' + active + '" data-source-id="' + s.id + '" onclick="selectSource(\'' + s.id + '\')">';
+      html += '<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#1a1a2e;color:#3a4a5a;font-size:13px">';
+      html += s.type === 'black' ? '⏹ 黑场' : '📊 测试图';
       html += '</div>';
-      html += '<div class="dir-label">'+esc(s.name)+'</div></div>';
+      html += '<div class="dir-label">' + esc(s.name) + '</div></div>';
       continue;
     }
-    const hlsUrl = '/live/'+s.device_id+'/index.m3u8';
-    html += '<div class="dir-preview dir-sub'+(selectedSource===s.id?' active':'')+'" onclick="selectSource(\''+s.id+'\')">';
-    html += '<video muted autoplay playsinline src="'+MTX_HLS+hlsUrl+'"></video>';
-    html += '<div class="dir-label">'+esc(s.name)+'</div></div>';
+    const hlsUrl = '/live/' + s.device_id + '/';
+    html += '<div class="dir-preview dir-sub' + active + '" data-source-id="' + s.id + '" onclick="selectSource(\'' + s.id + '\')">';
+    html += '<video muted autoplay playsinline src="' + MTX_HLS + hlsUrl + '"></video>';
+    html += '<div class="dir-label">' + esc(s.name) + '</div></div>';
   }
   if (sources.length === 0) {
     html = '<div style="grid-column:1/-1;display:flex;align-items:center;justify-content:center;color:#3a4a5a;font-size:13px;min-height:200px">暂无信号源</div>';
@@ -876,26 +967,49 @@ async function loadDirector() {
 
 function selectSource(id) {
   selectedSource = id;
-  loadDirector();
+  // Just toggle active class, don't reload
+  document.querySelectorAll('#dirPreview .dir-sub').forEach(el => {
+    el.classList.toggle('active', el.dataset.sourceId === id);
+  });
 }
 
 async function switchSource() {
   const id = selectedSource || (dirSources[0] && dirSources[0].id);
-  if (!id) { toast('请先选择一个信号源','i'); return; }
-  const r = await api('/api/director/switch', {method:'POST', body:{source_id:id, transition:'cut'}});
+  if (!id) { toast('请先选择一个信号源', 'i'); return; }
+  const r = await api('/api/director/switch', { method: 'POST', body: { source_id: id, transition: 'cut' } });
   if (r.status === 'switched') {
-    toast('已切换到: '+id);
+    toast('✅ 已切换');
     loadDirector();
   } else {
-    toast(r.error||'切换失败','e');
+    toast(r.error || '切换失败', 'e');
   }
 }
 
 async function stopPGM() {
-  const r = await api('/api/director/stop', {method:'POST'});
+  const r = await api('/api/director/stop', { method: 'POST' });
   if (r.status === 'stopped') {
     toast('PGM 已停止');
     loadDirector();
+  }
+}
+
+async function startPush() {
+  const url = document.getElementById('pushURL').value.trim();
+  if (!url) { toast('请输入推流地址','i'); return; }
+  if (!url.startsWith('rtmp://')) { toast('推流地址必须以 rtmp:// 开头','e'); return; }
+  const r = await api('/api/director/push', { method: 'POST', body: { url } });
+  if (r.status === 'push_set') {
+    toast('✅ 正在推流到: '+url);
+  } else {
+    toast(r.error||'推流失败','e');
+  }
+}
+
+async function stopPush() {
+  const r = await api('/api/director/push', { method: 'POST', body: { url: '' } });
+  if (r.status === 'push_stopped') {
+    toast('推流已停止');
+    document.getElementById('pushURL').value = '';
   }
 }
 
@@ -954,8 +1068,81 @@ switchTab = function(name) {
   if (name==='snapshots') loadSnapshots();
   if (name==='director') loadDirector();
   if (name==='motion') loadMotion();
+  if (name==='discover') loadDiscover();
   if (name==='status') loadStatus();
 };
+
+// ===== DRAG & DROP (card reordering) =====
+var dragSrcId = null;
+
+function dragStart(e, id) {
+  dragSrcId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', id);
+  document.getElementById('lv-'+id).classList.add('dragging');
+}
+
+function dragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  var card = e.target.closest('.live-card');
+  if (card) card.classList.add('drag-over');
+}
+
+function dropCard(e, targetId) {
+  e.preventDefault();
+  document.querySelectorAll('.live-card').forEach(function(c) {
+    c.classList.remove('drag-over', 'dragging');
+  });
+  if (dragSrcId === targetId) return;
+  swapCards(dragSrcId, targetId);
+  saveCardOrder();
+  dragSrcId = null;
+}
+
+function dragEnd(e) {
+  document.querySelectorAll('.live-card').forEach(function(c) {
+    c.classList.remove('drag-over', 'dragging');
+  });
+}
+
+function swapCards(id1, id2) {
+  var grid = document.getElementById('liveGrid');
+  var c1 = document.getElementById('lv-'+id1);
+  var c2 = document.getElementById('lv-'+id2);
+  if (!c1 || !c2) return;
+  // Insert c1 before c2 if before, else after
+  if (c1.nextElementSibling === c2) {
+    grid.insertBefore(c2, c1);
+  } else if (c2.nextElementSibling === c1) {
+    grid.insertBefore(c1, c2);
+  } else {
+    // General case: swap by inserting one after the other
+    var c2Next = c2.nextElementSibling;
+    grid.insertBefore(c1, c2);
+    if (c2Next) grid.insertBefore(c2, c2Next);
+    else grid.appendChild(c2);
+  }
+}
+
+function loadCardOrder() {
+  try {
+    var data = localStorage.getItem('netcam_card_order');
+    return data ? JSON.parse(data) : null;
+  } catch(e) { return null; }
+}
+
+function saveCardOrder() {
+  var grid = document.getElementById('liveGrid');
+  var ids = [];
+  grid.querySelectorAll('.live-card').forEach(function(c) {
+    var id = c.id.replace('lv-', '');
+    if (id) ids.push(id);
+  });
+  try {
+    localStorage.setItem('netcam_card_order', JSON.stringify(ids));
+  } catch(e) {}
+}
 
 // ===== MOTION DETECTION =====
 async function loadMotion() {
@@ -1047,29 +1234,135 @@ async function addMotion() {
 }
 
 // ===== DEVICE DISCOVERY =====
-async function discoverDevices() {
-  var btn = event.target;
-  btn.textContent = '扫描中...';
-  btn.disabled = true;
-  var results = await api('/api/discover');
-  btn.textContent = '扫描局域网';
-  btn.disabled = false;
-  if (!results || !results.length) { toast('未发现新设备','i'); return; }
-  var html = results.map(function(r,i){
-    return '<div style="padding:6px;border-bottom:1px solid #1a2a3a;font-size:12px;display:flex;align-items:center;gap:8px">'+
-      '<span style="background:#1a2a3a;padding:2px 6px;border-radius:3px;font-size:10px">'+(r.protocol||'?').toUpperCase()+'</span>'+
-      '<span>'+esc(r.ip)+'</span>'+
-      '<span style="color:#5a7288">'+esc(r.url||'')+'</span>'+
-      '<button class="btn btn-sm btn-success" onclick="quickAdd(\''+esc(r.url)+'\')">添加</button></div>';
-  }).join('');
-  toast('<div style="max-height:300px;overflow-y:auto">'+html+'</div>','i');
+var discoverTimer = null;
+var discoverIPs = [];
+
+function getDeviceIcon(type) {
+  var map = {
+    'camera': '📷',
+    'nvr': '🎥',
+    'ac': '❄️',
+    'appliance': '🏠',
+    'router': '📡',
+    'display': '📺',
+    'nas': '💾',
+    'printer': '🖨️',
+    'smart-home': '🏡',
+    'sensor': '🔍',
+    'usb': '🔌'
+  };
+  return map[type] || '📱';
 }
 
-async function quickAdd(url) {
-  var name = url.replace(/^rtsp:\/\//,'').split('/')[0];
-  await api('/api/devices', {method:'POST', body:{name:name, protocol:'rtsp', url:url}});
-  toast('已添加 '+name);
-  renderLive();
+async function startScan() {
+  var btn = document.getElementById('scanBtn');
+  btn.textContent = '⏳ 扫描中...';
+  btn.disabled = true;
+  document.getElementById('scanProgress').textContent = '正在启动扫描...';
+  var r = await api('/api/discover/start', {method:'POST'});
+  if (r.status === 'scan_started') {
+    // Poll for progress
+    if (discoverTimer) clearInterval(discoverTimer);
+    discoverTimer = setInterval(loadDiscover, 2000);
+    setTimeout(loadDiscover, 500);
+  } else {
+    toast(r.error || '启动失败', 'e');
+    btn.textContent = '🔍 扫描局域网';
+    btn.disabled = false;
+  }
+}
+
+async function stopScan() {
+  await api('/api/discover/stop', {method:'POST'});
+  if (discoverTimer) { clearInterval(discoverTimer); discoverTimer = null; }
+  document.getElementById('scanBtn').textContent = '🔍 扫描局域网';
+  document.getElementById('scanBtn').disabled = false;
+  document.getElementById('scanProgress').textContent = '已停止';
+  loadDiscover();
+}
+
+async function loadDiscover() {
+  var data = await api('/api/discover/status');
+  if (!data || data.error) return;
+
+  var progress = document.getElementById('scanProgress');
+  if (data.scanning) {
+    progress.textContent = '⏳ ' + data.progress;
+    document.getElementById('scanBtn').textContent = '⏳ 扫描中...';
+    document.getElementById('scanBtn').disabled = true;
+  } else {
+    progress.textContent = data.progress;
+    document.getElementById('scanBtn').textContent = '🔍 扫描局域网';
+    document.getElementById('scanBtn').disabled = false;
+    if (discoverTimer) { clearInterval(discoverTimer); discoverTimer = null; }
+  }
+
+  var results = data.results || {};
+  var ips = Object.keys(results);
+  discoverIPs = ips;
+
+  var tbody = document.getElementById('discoverTable');
+  if (ips.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#3a4a5a;padding:20px">' +
+      (data.scanning ? '扫描中，请稍候...' : '暂无发现设备，点击「扫描局域网」开始') + '</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = ips.map(function(ip) {
+    var d = results[ip];
+    var icon = getDeviceIcon(d.device_type);
+    var typeClass = 'device-type-' + (d.device_type || 'unknown');
+    var brand = d.brand_cn || d.brand || '-';
+    var ports = (d.ports || []).join(', ') || '-';
+    var proto = d.protocol || '-';
+    var method = d.method || '-';
+    var conf = d.confidence || 0;
+    var rtsp = (d.rtsp_urls || []).join('<br>') || '-';
+    var macInfo = d.mac_vendor ? ' (' + d.mac_vendor + ')' : '';
+    return '<tr>' +
+      '<td><input type="checkbox" class="discover-checkbox" value="' + ip + '" ' +
+        (d.device_type === 'camera' || d.device_type === 'usb' ? 'checked' : '') + '></td>' +
+      '<td><span class="device-icon ' + typeClass + '">' + icon + '</span> ' + esc(d.device_type || '未知') + '</td>' +
+      '<td>' + esc(brand) + esc(macInfo) + '</td>' +
+      '<td>' + esc(ip) + '</td>' +
+      '<td>' + ports + '</td>' +
+      '<td>' + proto.toUpperCase() + '</td>' +
+      '<td>' + method + '</td>' +
+      '<td>' + conf + '%</td>' +
+      '<td style="font-size:11px;color:#5a7288;max-width:200px;word-break:break-all">' + rtsp + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+function toggleAllDiscover(checked) {
+  document.querySelectorAll('#discoverTable .discover-checkbox').forEach(function(cb) {
+    cb.checked = checked;
+  });
+}
+
+async function importSelected() {
+  var selected = [];
+  document.querySelectorAll('#discoverTable .discover-checkbox:checked').forEach(function(cb) {
+    selected.push(cb.value);
+  });
+  if (selected.length === 0) {
+    toast('请先选择要导入的设备', 'i');
+    return;
+  }
+  var statusEl = document.getElementById('importStatus');
+  statusEl.textContent = '导入中 (' + selected.length + ' 个)...';
+  var r = await api('/api/discover/import', {method:'POST', body:{ips: selected}});
+  if (r.status === 'ok') {
+    toast('✅ 成功导入 ' + r.imported + '/' + r.requested + ' 个设备');
+    statusEl.textContent = '已导入 ' + r.imported + '/' + r.requested + ' 个';
+    // Refresh live view
+    renderLive();
+    // Re-check scan to update display
+    loadDiscover();
+  } else {
+    toast(r.error || '导入失败', 'e');
+    statusEl.textContent = '';
+  }
 }
 </script>
 </body>

@@ -165,6 +165,14 @@ func (s *Store) migrate() {
 			snapshot_path TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL DEFAULT ''
 		)`,
+		`CREATE TABLE IF NOT EXISTS licenses (
+			key TEXT PRIMARY KEY,
+			is_pro INTEGER NOT NULL DEFAULT 0,
+			device_id TEXT NOT NULL DEFAULT '',
+			note TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT '',
+			expires_at TEXT NOT NULL DEFAULT ''
+		)`,
 	}
 
 	for _, ddl := range tables {
@@ -597,4 +605,82 @@ func (s *Store) ListMotionEventsAll(since time.Time) []*MotionEvent {
 		result = append(result, e)
 	}
 	return result
+}
+
+
+// ============ Licenses ============
+
+type License struct {
+	Key       string `json:"key"`
+	IsPro     bool   `json:"is_pro"`
+	DeviceID  string `json:"device_id"`
+	Note      string `json:"note"`
+	CreatedAt string `json:"created_at"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+func (s *Store) GenerateLicense(isPro bool, note string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := uuid.New().String()[:8]
+	now := time.Now().Format(time.RFC3339)
+	s.db.Exec("INSERT INTO licenses (key, is_pro, note, created_at) VALUES (?, ?, ?, ?)",
+		key, boolToInt(isPro), note, now)
+	return key
+}
+
+func (s *Store) CheckLicense(key string) *License {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	row := s.db.QueryRow("SELECT key, is_pro, device_id, note, created_at, expires_at FROM licenses WHERE key = ?", key)
+	l := &License{}
+	if err := row.Scan(&l.Key, &l.IsPro, &l.DeviceID, &l.Note, &l.CreatedAt, &l.ExpiresAt); err != nil {
+		return nil
+	}
+	if l.ExpiresAt != "" {
+		exp, err := time.Parse(time.RFC3339, l.ExpiresAt)
+		if err == nil && time.Now().After(exp) {
+			return nil
+		}
+	}
+	return l
+}
+
+func (s *Store) BindLicense(key string, deviceID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	res, err := s.db.Exec("UPDATE licenses SET device_id = ? WHERE key = ? AND device_id = ''", deviceID, key)
+	if err != nil {
+		return false
+	}
+	affected, _ := res.RowsAffected()
+	return affected > 0
+}
+
+func (s *Store) ListLicenses() []*License {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	rows, err := s.db.Query("SELECT key, is_pro, device_id, note, created_at, expires_at FROM licenses ORDER BY created_at DESC")
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var result []*License
+	for rows.Next() {
+		l := &License{}
+		rows.Scan(&l.Key, &l.IsPro, &l.DeviceID, &l.Note, &l.CreatedAt, &l.ExpiresAt)
+		result = append(result, l)
+	}
+	return result
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
