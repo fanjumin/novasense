@@ -1026,7 +1026,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	s.json(w, map[string]interface{}{
 		"status":           "running",
-		"version":          "0.1.0",
+		"version":          "0.5.0",
 		"devices":          devices,
 		"online_devices":   onlineCount,
 		"recordings":       recordings,
@@ -1046,7 +1046,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	s.json(w, map[string]interface{}{
 		"status":           "ok",
-		"version":          "0.1.0",
+		"version":          "0.5.0",
 		"uptime":           time.Since(startTime).String(),
 		"devices_total":    devices,
 		"devices_online":   onlineCount,
