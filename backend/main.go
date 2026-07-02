@@ -2,9 +2,11 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -20,6 +22,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 const (
@@ -81,6 +85,7 @@ var publicPaths = []string{
 	"/api/login",
 	"/api/health",
 	"/api/license/check",
+	"/api/events",
 	"/ui/login.html",
 	"/NetCamPro.apk",
 }
@@ -623,12 +628,18 @@ func (m *FFmpegManager) StartMotionRecording(deviceID string) (*motionRec, error
 // ============ HTTP API ============
 
 type Server struct {
-	store    *Store
-	ffmpeg   *FFmpegManager
-	director *Director
-	disco    *DiscoveryManager
-	mux      *http.ServeMux
-	dataDir  string
+	store        *Store
+	ffmpeg       *FFmpegManager
+	director     *Director
+	disco        *DiscoveryManager
+	mux          *http.ServeMux
+	dataDir      string
+	vpsPluginURL string
+	vpsAPIKey    string
+	faceDetector *FaceDetector
+	faceDir      string // directory for face thumbnails
+	sseClients   map[chan string]bool
+	sseMu        sync.Mutex
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -734,6 +745,14 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/director/overlays", s.handleDirectorOverlays)
 	s.mux.HandleFunc("/api/director/stop", s.handleDirectorStop)
 	s.mux.HandleFunc("/api/director/push", s.handleDirectorPush)
+	s.mux.HandleFunc("/api/storage", s.handleStorage)
+	s.mux.HandleFunc("/api/events", s.handleSSE)
+	s.mux.HandleFunc("/api/talk/", s.handleTalk)
+	s.mux.HandleFunc("/api/groups", s.handleGroups)
+	s.mux.HandleFunc("/api/faces", s.handleFaces)
+	s.mux.HandleFunc("/api/faces/", s.handleFaceByID)
+	s.mux.HandleFunc("/api/face-events", s.handleFaceEvents)
+	s.mux.HandleFunc("/api/face-events/", s.handleFaceEventsByMotion)
 }
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
@@ -786,6 +805,19 @@ func (s *Server) handleDeviceByID(w http.ResponseWriter, r *http.Request) {
 		d.Status = checkDeviceOnline(d.URL)
 		s.store.UpdateDeviceStatus(id, d.Status)
 		s.json(w, d)
+	case "PUT":
+		var req struct {
+			Name      string `json:"name,omitempty"`
+			GroupName string `json:"group_name,omitempty"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.error(w, "invalid JSON", 400)
+			return
+		}
+		if req.GroupName != "" {
+			s.store.UpdateDeviceGroup(id, req.GroupName)
+		}
+		s.json(w, map[string]string{"status": "updated"})
 	case "DELETE":
 		s.store.DeleteDevice(id)
 		s.json(w, map[string]string{"status": "deleted"})
@@ -838,6 +870,14 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.json(w, rec)
+	case "DELETE":
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			s.error(w, "missing id", 400)
+			return
+		}
+		s.store.DeleteRecording(id)
+		s.json(w, map[string]string{"status": "deleted"})
 	default:
 		s.error(w, "method not allowed", 405)
 	}
@@ -1026,11 +1066,12 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	s.json(w, map[string]interface{}{
 		"status":           "running",
-		"version":          "0.5.0",
+		"version":          "0.8.1",
 		"devices":          devices,
 		"online_devices":   onlineCount,
 		"recordings":       recordings,
 		"mediamtx_hls_url": "http://192.0.2.107:8888/",
+		"disk":             s.store.GetDiskStats(),
 	})
 }
 
@@ -1046,7 +1087,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	s.json(w, map[string]interface{}{
 		"status":           "ok",
-		"version":          "0.5.0",
+		"version":          "0.8.1",
 		"uptime":           time.Since(startTime).String(),
 		"devices_total":    devices,
 		"devices_online":   onlineCount,
@@ -1653,6 +1694,21 @@ func (s *Server) startMotionDetector() {
 					s.store.AddMotionEvent(event)
 					log.Printf("[motion] detected on %s, snapshot=%s", cfg.DeviceID[:8], snapFP)
 
+					// Broadcast motion event via SSE
+					s.broadcastSSE("motion", map[string]interface{}{
+						"device_id": cfg.DeviceID,
+						"device_name": device.Name,
+						"detected_at": event.DetectedAt,
+					})
+
+					// Face detection on snapshot (async)
+					go s.processFacesForMotion(snapFP, event.ID, cfg.DeviceID)
+
+					// Send snapshot to VPS for AI analysis
+					if s.vpsPluginURL != "" && s.vpsAPIKey != "" {
+						go s.sendForAIAnalysis(cfg.DeviceID, device.Name, snapFP)
+					}
+
 					// *** START RECORDING on motion ***
 					if _, already := activeMotionRecs[cfg.DeviceID]; !already {
 						rec, err := s.ffmpeg.StartMotionRecording(cfg.DeviceID)
@@ -2018,16 +2074,414 @@ func (s *Server) handleLicenseList(w http.ResponseWriter, r *http.Request) {
 	s.json(w, lics)
 }
 
+// ============ Face API Handlers ============
+
+func (s *Server) handleFaces(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		faces := s.store.ListFaces()
+		if faces == nil {
+			faces = []*KnownFace{}
+		}
+		s.json(w, faces)
+	case "POST":
+		var req struct {
+			Label    string `json:"label"`
+			FaceHash string `json:"face_hash,omitempty"`
+			DeviceID string `json:"device_id,omitempty"`
+			ThumbPath string `json:"thumb_path,omitempty"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.error(w, "invalid JSON", 400)
+			return
+		}
+		f := &KnownFace{
+			Label:     req.Label,
+			FaceHash:  req.FaceHash,
+			DeviceID:  req.DeviceID,
+			ThumbPath: req.ThumbPath,
+		}
+		s.store.AddFace(f)
+		s.json(w, f)
+	default:
+		s.error(w, "method not allowed", 405)
+	}
+}
+
+func (s *Server) handleFaceByID(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/api/faces/")
+	id = strings.TrimRight(id, "/")
+	if id == "" {
+		s.handleFaces(w, r)
+		return
+	}
+
+	switch r.Method {
+	case "GET":
+		f := s.store.GetFace(id)
+		if f == nil {
+			s.error(w, "face not found", 404)
+			return
+		}
+		s.json(w, f)
+	case "PUT":
+		var req struct {
+			Label string `json:"label"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.error(w, "invalid JSON", 400)
+			return
+		}
+		s.store.UpdateFaceLabel(id, req.Label)
+		s.json(w, map[string]string{"status": "updated"})
+	case "DELETE":
+		s.store.DeleteFace(id)
+		s.json(w, map[string]string{"status": "deleted"})
+	default:
+		s.error(w, "method not allowed", 405)
+	}
+}
+
+func (s *Server) handleFaceEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		s.error(w, "method not allowed", 405)
+		return
+	}
+	deviceID := r.URL.Query().Get("device_id")
+	limitStr := r.URL.Query().Get("limit")
+	limit := 50
+	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 200 {
+		limit = l
+	}
+	events := s.store.ListFaceEvents(deviceID, limit)
+	if events == nil {
+		events = []*FaceEvent{}
+	}
+	s.json(w, events)
+}
+
+func (s *Server) handleFaceEventsByMotion(w http.ResponseWriter, r *http.Request) {
+	motionID := strings.TrimPrefix(r.URL.Path, "/api/face-events/")
+	motionID = strings.TrimRight(motionID, "/")
+	if motionID == "" {
+		s.handleFaceEvents(w, r)
+		return
+	}
+	events := s.store.ListFaceEventsByMotion(motionID)
+	if events == nil {
+		events = []*FaceEvent{}
+	}
+	s.json(w, events)
+}
+
+// ============ SSE (Server-Sent Events) ============
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
+
+// handleTalk receives PCM audio from browser WebSocket and pipes to FFmpeg → MediaMTX.
+func (s *Server) handleTalk(w http.ResponseWriter, r *http.Request) {
+	deviceID := strings.TrimPrefix(r.URL.Path, "/api/talk/")
+	deviceID = strings.TrimRight(deviceID, "/")
+	if deviceID == "" {
+		http.Error(w, "device_id required", 400)
+		return
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("[talk] upgrade failed: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	// Start FFmpeg: read PCM s16le 16kHz mono from stdin, encode AAC, push to MediaMTX
+	// MediaMTX will make it available as rtmp://localhost:1935/talk/{deviceID}
+	ffmpeg := exec.Command("ffmpeg",
+		"-f", "s16le",
+		"-ar", "16000",
+		"-ac", "1",
+		"-i", "pipe:0",
+		"-c:a", "aac",
+		"-b:a", "64k",
+		"-f", "flv",
+		fmt.Sprintf("rtmp://localhost:1935/talk/%s", deviceID),
+	)
+
+	stdin, err := ffmpeg.StdinPipe()
+	if err != nil {
+		log.Printf("[talk] stdin pipe error: %v", err)
+		return
+	}
+
+	if err := ffmpeg.Start(); err != nil {
+		log.Printf("[talk] ffmpeg start error: %v", err)
+		return
+	}
+
+	log.Printf("[talk] started for device %s", deviceID[:8])
+
+	// Read WebSocket binary messages and write to FFmpeg stdin
+	for {
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			break
+		}
+		stdin.Write(msg)
+	}
+
+	// Cleanup
+	stdin.Close()
+	ffmpeg.Process.Kill()
+	ffmpeg.Wait()
+	log.Printf("[talk] stopped for device %s", deviceID[:8])
+}
+
+// handleSSE streams motion/face events to the browser via SSE.
+func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", 500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	ch := make(chan string, 16)
+	s.sseMu.Lock()
+	s.sseClients[ch] = true
+	s.sseMu.Unlock()
+
+	// Remove client on disconnect
+	notify := r.Context().Done()
+	go func() {
+		<-notify
+		s.sseMu.Lock()
+		delete(s.sseClients, ch)
+		s.sseMu.Unlock()
+	}()
+
+	// Send initial keepalive
+	fmt.Fprintf(w, "event: connected\ndata: {}\n\n")
+	flusher.Flush()
+
+	for msg := range ch {
+		fmt.Fprintf(w, "data: %s\n\n", msg)
+		flusher.Flush()
+	}
+}
+
+// broadcastSSE sends a JSON event to all connected SSE clients.
+func (s *Server) broadcastSSE(eventType string, data interface{}) {
+	payload, err := json.Marshal(map[string]interface{}{
+		"type": eventType,
+		"data": data,
+	})
+	if err != nil {
+		return
+	}
+	msg := string(payload)
+	s.sseMu.Lock()
+	defer s.sseMu.Unlock()
+	for ch := range s.sseClients {
+		select {
+		case ch <- msg:
+		default:
+			// Client too slow, drop
+		}
+	}
+}
+
+// ============ Groups API Handler ============
+
+func (s *Server) handleGroups(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		s.json(w, s.store.ListGroups())
+	case "PUT":
+		// Rename a group: {"old":"客厅","new":"起居室"}
+		var req struct {
+			Old string `json:"old"`
+			New string `json:"new"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.error(w, "invalid JSON", 400)
+			return
+		}
+		if req.Old == "" || req.New == "" {
+			s.error(w, "old and new required", 400)
+			return
+		}
+		// Update all devices with old group name
+		s.store.RenameGroup(req.Old, req.New)
+		s.json(w, map[string]string{"status": "renamed"})
+	default:
+		s.error(w, "method not allowed", 405)
+	}
+}
+
+// ============ Storage API Handler ============
+
+func (s *Server) handleStorage(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		rc := s.store.GetRetentionConfig()
+		disk := s.store.GetDiskStats()
+		s.json(w, map[string]interface{}{
+			"retention": rc,
+			"disk":      disk,
+		})
+	case "PUT":
+		var rc RetentionConfig
+		if err := json.NewDecoder(r.Body).Decode(&rc); err != nil {
+			s.error(w, "invalid JSON", 400)
+			return
+		}
+		s.store.UpdateRetentionConfig(&rc)
+		s.json(w, map[string]string{"status": "updated"})
+	case "POST":
+		// Manual cleanup trigger
+		rc := s.store.GetRetentionConfig()
+		if !rc.Enabled {
+			s.json(w, map[string]interface{}{"status": "skipped", "reason": "auto cleanup disabled"})
+			return
+		}
+		deleted := s.store.DeleteOldRecordings(rc)
+		s.json(w, map[string]interface{}{"status": "done", "deleted": deleted})
+	default:
+		s.error(w, "method not allowed", 405)
+	}
+}
+
+// ============ Face Detection Integration ============
+
+// processFacesForMotion is called after a motion event to detect and match faces in the snapshot.
+func (s *Server) processFacesForMotion(snapshotPath, motionEventID, deviceID string) {
+	if !s.faceDetector.Ready() {
+		return
+	}
+
+	faces, err := s.faceDetector.DetectFaces(snapshotPath)
+	if err != nil {
+		log.Printf("[face] detection error on %s: %v", snapshotPath[:40], err)
+		return
+	}
+	if len(faces) == 0 {
+		return
+	}
+
+	// Load all known faces for matching
+	knownFaces := s.store.ListFaces()
+	log.Printf("[face] detected %d face(s) in motion event %s (known: %d)", len(faces), motionEventID[:8], len(knownFaces))
+
+	for _, face := range faces {
+		// Crop face from snapshot
+		faceImg, err := CropFace(snapshotPath, face.Bounds)
+		if err != nil {
+			log.Printf("[face] crop error: %v", err)
+			continue
+		}
+
+		// Save thumbnail
+		thumbPath, err := SaveFaceThumbnail(faceImg, s.faceDir)
+		if err != nil {
+			log.Printf("[face] save thumb error: %v", err)
+			continue
+		}
+
+		// Compute hash
+		faceHash := AverageHash(faceImg)
+
+		// Try to match against known faces
+		boundsJSON, _ := json.Marshal(map[string]int{
+			"x": face.Bounds.Min.X,
+			"y": face.Bounds.Min.Y,
+			"w": face.Bounds.Dx(),
+			"h": face.Bounds.Dy(),
+		})
+
+		matchedFace, confidence := MatchFace(faceHash, knownFaces, 15)
+		label := "unknown"
+		faceID := ""
+		if matchedFace != nil {
+			label = matchedFace.Label
+			faceID = matchedFace.ID
+			// Update seen count
+			s.store.UpdateFaceSeen(matchedFace.ID)
+		} else {
+			// New unknown face — add to known faces for future matching
+			existing := s.store.FindFaceByHash(faceHash)
+			if existing == nil {
+				newFace := &KnownFace{
+					Label:     "unknown",
+					FaceHash:  faceHash,
+					DeviceID:  deviceID,
+					ThumbPath: thumbPath,
+				}
+				s.store.AddFace(newFace)
+				faceID = newFace.ID
+				knownFaces = append(knownFaces, newFace)
+			} else {
+				faceID = existing.ID
+				label = existing.Label
+				s.store.UpdateFaceSeen(existing.ID)
+			}
+		}
+
+		// Record face event
+		event := &FaceEvent{
+			MotionEventID: motionEventID,
+			DeviceID:      deviceID,
+			FaceID:        faceID,
+			Label:         label,
+			Confidence:    confidence,
+			Score:         face.Score,
+			Bounds:        string(boundsJSON),
+			ThumbPath:     thumbPath,
+			DetectedAt:    time.Now().Format(time.RFC3339),
+		}
+		s.store.AddFaceEvent(event)
+		log.Printf("[face] %s: %s (match=%s, conf=%.2f)", deviceID[:8], label, faceID[:8], confidence)
+	}
+}
+
+// findCascadeFile locates the pigo facefinder cascade file.
+// Checks several common paths.
+func findCascadeFile(dataDir string) string {
+	candidates := []string{
+		"backend/facefinder",                          // run from project root
+		filepath.Join(dataDir, "..", "backend", "facefinder"), // DATA_DIR=./data
+		filepath.Join(dataDir, "facefinder"),           // copy in data dir
+	}
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			abs, _ := filepath.Abs(p)
+			return abs
+		}
+	}
+	// Default to first candidate (will log warning in NewFaceDetector)
+	return candidates[0]
+}
+
 // Update NewServer to start motion detector
 func NewServer(store *Store, dataDir string) *Server {
 	initAuth()
 	s := &Server{
-		store:    store,
-		ffmpeg:   NewFFmpegManager(store, dataDir),
-		director: NewDirector(NewFFmpegManager(store, dataDir), store, dataDir),
-		disco:    NewDiscoveryManager(),
-		mux:      http.NewServeMux(),
-		dataDir:  dataDir,
+		store:        store,
+		ffmpeg:       NewFFmpegManager(store, dataDir),
+		director:     NewDirector(NewFFmpegManager(store, dataDir), store, dataDir),
+		disco:        NewDiscoveryManager(),
+		mux:          http.NewServeMux(),
+		dataDir:      dataDir,
+		vpsPluginURL: os.Getenv("VPS_PLUGIN_URL"),
+		vpsAPIKey:    os.Getenv("VPS_API_KEY"),
+		faceDetector: NewFaceDetector(findCascadeFile(dataDir)),
+		faceDir:      filepath.Join(dataDir, "faces"),
+		sseClients:   make(map[chan string]bool),
 	}
 	s.registerRoutes()
 
@@ -2043,6 +2497,11 @@ func NewServer(store *Store, dataDir string) *Server {
 	sfs := http.FileServer(http.Dir(snapsDir))
 	s.mux.Handle("/snapshots/", http.StripPrefix("/snapshots/", sfs))
 
+	// Serve face thumbnails
+	os.MkdirAll(s.faceDir, 0755)
+	ffs := http.FileServer(http.Dir(s.faceDir))
+	s.mux.Handle("/faces/", http.StripPrefix("/faces/", ffs))
+
 	// Start motion detector
 	go s.startMotionDetector()
 
@@ -2051,7 +2510,147 @@ func NewServer(store *Store, dataDir string) *Server {
 	// Start snapshot capture
 	go s.startSnapshotter()
 
+	// Start subscription heartbeat
+	s.startSubscriptionHeartbeat()
+
+	// Start recording retention cleanup (every 6 hours)
+	go func() {
+		for {
+			rc := s.store.GetRetentionConfig()
+			if rc.Enabled {
+				s.store.DeleteOldRecordings(rc)
+			}
+			time.Sleep(6 * time.Hour)
+		}
+	}()
+
 	return s
+}
+
+// startSubscriptionHeartbeat — periodic check-in with VPS to verify subscription
+func (s *Server) startSubscriptionHeartbeat() {
+	if s.vpsPluginURL == "" || s.vpsAPIKey == "" {
+		log.Println("[SUB] VPS not configured, skipping subscription heartbeat")
+		return
+	}
+	go func() {
+		s.doHeartbeat()
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			s.doHeartbeat()
+		}
+	}()
+}
+
+func (s *Server) doHeartbeat() {
+	url := strings.TrimRight(s.vpsPluginURL, "/") + "/api/client/subscription/check"
+	body := map[string]string{
+		"device_id": getHostname(),
+		"version":   "0.8.1",
+	}
+	payload, _ := json.Marshal(body)
+	req, err := http.NewRequest("POST", url, bytes.NewReader(payload))
+	if err != nil {
+		log.Printf("[SUB] heartbeat request failed: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", s.vpsAPIKey)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[SUB] heartbeat connection failed: %v (VPS might be offline)", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Valid         bool   `json:"valid"`
+			DaysRemaining int    `json:"days_remaining"`
+			Reason        string `json:"reason"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("[SUB] heartbeat decode failed: %v", err)
+		return
+	}
+
+	if result.Success && result.Data.Valid {
+		log.Printf("[SUB] heartbeat OK — %d days remaining", result.Data.DaysRemaining)
+	} else {
+		reason := result.Data.Reason
+		if reason == "" {
+			reason = "unknown"
+		}
+		log.Printf("[SUB] heartbeat FAILED — %s", reason)
+	}
+}
+
+func getHostname() string {
+	name, err := os.Hostname()
+	if err != nil {
+		return "gateway-unknown"
+	}
+	return name
+}
+
+// sendForAIAnalysis reads a snapshot JPEG and sends it to the VPS plugin for AI analysis
+func (s *Server) sendForAIAnalysis(deviceID, cameraName, snapPath string) {
+	// Read the snapshot file
+	data, err := os.ReadFile(snapPath)
+	if err != nil {
+		log.Printf("[AI] failed to read snapshot %s: %v", snapPath, err)
+		return
+	}
+
+	// Encode to base64
+	b64 := base64.StdEncoding.EncodeToString(data)
+
+	url := strings.TrimRight(s.vpsPluginURL, "/") + "/api/client/analyze"
+	body := map[string]interface{}{
+		"device_id":    deviceID,
+		"camera_name":  cameraName,
+		"image_base64": b64,
+		"motion_score": 1.0,
+	}
+	payload, _ := json.Marshal(body)
+
+	req, err := http.NewRequest("POST", url, bytes.NewReader(payload))
+	if err != nil {
+		log.Printf("[AI] request creation failed: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", s.vpsAPIKey)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[AI] VPS connection failed: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Analysis   string `json:"analysis"`
+			Confidence string `json:"confidence"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("[AI] decode failed: %v", err)
+		return
+	}
+	if result.Success {
+		log.Printf("[AI] %s: %s (confidence: %s)", cameraName, result.Data.Analysis, result.Data.Confidence)
+	} else {
+		log.Printf("[AI] VPS returned error for %s", cameraName)
+	}
 }
 
 func main() {
@@ -2068,7 +2667,7 @@ func main() {
 	server := NewServer(store, dataDir)
 
 	addr := ":8899"
-	log.Printf("=== 视频流管理平台 v0.1.0 ===")
+	log.Printf("=== 视频流管理平台 v0.8.1 ===")
 	log.Printf("API 服务: http://0.0.0.0%s", addr)
 	log.Printf("打开浏览器访问 http://localhost%s", addr)
 	if err := http.ListenAndServe(addr, server); err != nil {

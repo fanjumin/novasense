@@ -16,8 +16,6 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #0a0e14; 
 .tab.active { color: #00c8ff; border-bottom-color: #00c8ff; }
 .content { padding: 12px; display: none; }
 .content.active { display: block; }
-
-/* Live grid */
 .live-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .live-grid.cols1 { grid-template-columns: 1fr; }
 .live-grid.cols2 { grid-template-columns: 1fr 1fr; }
@@ -39,13 +37,10 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #0a0e14; 
 .live-card .fullscreen-btn { position:absolute; top:6px; right:6px; background:rgba(0,0,0,0.5); border:none; color:#fff; font-size:14px; width:28px; height:28px; border-radius:4px; cursor:pointer; z-index:3; display:none; align-items:center; justify-content:center; }
 .live-card:hover .fullscreen-btn { display:flex; }
 .live-card .fullscreen-btn:hover { background:rgba(0,200,255,0.6); }
-
-/* Add card */
 .add-card { border: 2px dashed #1a2a3a; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 6px; color: #3a4a5a; transition: all .15s; min-height: 200px; }
 .add-card:hover { border-color: #00c8ff; color: #00c8ff; background: #0d1a2a; }
 .add-card .big-icon { font-size: 36px; }
 .add-card .hint { font-size: 13px; }
-
 .card { background: #111b25; border: 1px solid #1a2a3a; border-radius: 6px; padding: 12px; margin-bottom: 10px; }
 .card h3 { font-size: 13px; margin-bottom: 8px; color: #8aa0b8; font-weight: 500; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -99,7 +94,6 @@ tr:hover td { background: #141e2a; }
 .btn-outline { background:transparent; border:1px solid #2a3a4a; color:#8aa0b8; }
 .btn-outline:hover { background:#1a2a3a; }
 .btn-warning { background:#8a6a00; color:#fff; }
-/* Discovery styles */
 .device-icon { font-size:16px; }
 .device-type-camera { color:#69f0ae; }
 .device-type-ac { color:#40c4ff; }
@@ -163,6 +157,7 @@ a { color:#00c8ff; text-decoration:none; }
   <div class="tab" onclick="switchTab('snapshots')">📸 抓拍</div>
   <div class="tab" onclick="switchTab('director')">🎬 导播</div>
   <div class="tab" onclick="switchTab('motion')">🏃 运动</div>
+  <div class="tab" onclick="switchTab('faces')">👤 人脸</div>
   <div class="tab" onclick="switchTab('discover')">📡 发现</div>
   <div class="tab" onclick="switchTab('status')">📊 状态</div>
 </div>
@@ -176,7 +171,11 @@ a { color:#00c8ff; text-decoration:none; }
     <button class="btn btn-sm btn-outline" onclick="setLayout(4)">■■■■</button>
     <button class="btn btn-sm btn-outline" onclick="openAddForm()">+ 添加</button>
     <button class="btn btn-sm btn-outline" onclick="discoverDevices()">📡 扫描</button>
+    <select id="groupFilter" style="background:#0d151f;border:1px solid #1a2a3a;color:#d0d8e0;padding:3px 6px;border-radius:4px;font-size:12px" onchange="renderLive()">
+      <option value="">🏷️ 全部</option>
+    </select>
     <span style="flex:1"></span>
+    <button class="btn btn-sm btn-outline" onclick="showGroupManager()">📋 分组</button>
     <button class="btn btn-sm btn-outline" onclick="renderLive()">🔄</button>
   </div>
   <div class="live-grid cols2" id="liveGrid"></div>
@@ -187,9 +186,23 @@ a { color:#00c8ff; text-decoration:none; }
   <div class="toolbar">
     <button class="btn btn-warning" onclick="showRecord()">🎥 录制</button>
     <button class="btn btn-outline" onclick="loadRecordings()">🔄 刷新</button>
+    <span style="flex:1"></span>
+    <input id="recSearch" placeholder="搜索设备..." style="background:#0d151f;border:1px solid #1a2a3a;color:#d0d8e0;padding:4px 8px;border-radius:4px;width:140px;font-size:12px" oninput="filterRecordings()">
+    <input id="recDateFrom" type="date" style="background:#0d151f;border:1px solid #1a2a3a;color:#d0d8e0;padding:4px 8px;border-radius:4px;font-size:12px" onchange="filterRecordings()">
+    <input id="recDateTo" type="date" style="background:#0d151f;border:1px solid #1a2a3a;color:#d0d8e0;padding:4px 8px;border-radius:4px;font-size:12px" onchange="filterRecordings()">
+    <button class="btn btn-sm btn-outline" onclick="showStorageSettings()">⚙️ 存储</button>
+  </div>
+  <div id="recStorageBar" style="margin-bottom:8px;display:none">
+    <div style="display:flex;gap:8px;align-items:center;font-size:11px">
+      <span id="recDiskLabel">磁盘</span>
+      <div style="flex:1;height:6px;background:#0a1018;border-radius:3px;overflow:hidden">
+        <div id="recDiskBar" style="height:100%;border-radius:3px;transition:width .3s"></div>
+      </div>
+      <span id="recDiskText" style="color:#5a7288;white-space:nowrap"></span>
+    </div>
   </div>
   <div class="card" style="padding:0">
-    <table><thead><tr><th>设备</th><th>时间</th><th>时长</th><th>大小</th><th>播放</th></tr></thead>
+    <table><thead><tr><th>设备</th><th>时间</th><th>时长</th><th>大小</th><th>类型</th><th>播放</th><th></th></tr></thead>
       <tbody id="recTable"></tbody>
     </table>
   </div>
@@ -251,6 +264,30 @@ a { color:#00c8ff; text-decoration:none; }
   </div>
   <div id="motionCards" class="live-grid cols2"></div>
   <div id="motionTimeline" style="margin-top:12px"></div>
+</div>
+
+<!-- FACES -->
+<div id="tab-faces" class="content">
+  <div class="toolbar">
+    <button class="btn btn-outline" onclick="loadFaces()">🔄 刷新</button>
+    <span style="flex:1"></span>
+    <span id="faceStatus" style="font-size:12px;color:#5a7288"></span>
+  </div>
+  <div class="card">
+    <h3>已知人脸</h3>
+    <div id="faceList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:8px">
+      <div style="color:#5a7288;font-size:12px;padding:20px;text-align:center">加载中...</div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:10px">
+    <h3>最近识别记录</h3>
+    <table>
+      <thead><tr>
+        <th>时间</th><th>设备</th><th>人脸</th><th>置信度</th><th>截图</th>
+      </tr></thead>
+      <tbody id="faceEventTable"></tbody>
+    </table>
+  </div>
 </div>
 
 <!-- DISCOVERY -->
@@ -378,6 +415,44 @@ a { color:#00c8ff; text-decoration:none; }
   </div>
 </div>
 
+<div id="modalStorage" class="modal-overlay" style="display:none" onclick="closeIfBg(event,'modalStorage')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3>⚙️ 存储设置</h3>
+    <div style="font-size:12px;color:#5a7288;margin-bottom:8px">自动清理超过保留天数的旧录像</div>
+    <div class="form-group"><label>保留天数</label><input id="fRetDays" type="number" value="30" min="1" max="365"></div>
+    <div class="form-group"><label>最大磁盘使用率(%)</label><input id="fMaxDisk" type="number" value="80" min="10" max="99"></div>
+    <div class="form-group" style="flex-direction:row;align-items:center;gap:8px">
+      <label style="min-width:auto;width:auto">自动清理</label>
+      <input id="fRetEnabled" type="checkbox" checked style="width:18px;height:18px">
+    </div>
+    <div style="display:flex;gap:6px;margin-top:4px">
+      <button class="btn btn-outline" onclick="manualCleanup()">🧹 立即清理</button>
+      <span id="cleanupResult" style="font-size:11px;color:#5a7288;align-self:center"></span>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeById('modalStorage')">取消</button>
+      <button class="btn btn-primary" onclick="saveStorageSettings()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalGroupManager" class="modal-overlay" style="display:none" onclick="closeIfBg(event,'modalGroupManager')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:400px">
+    <h3>📋 分组管理</h3>
+    <div style="margin-bottom:8px;font-size:12px;color:#5a7288">点击分组名可重命名</div>
+    <div id="groupList" style="margin-bottom:8px">
+      <div style="color:#5a7288;font-size:12px">加载中...</div>
+    </div>
+    <div style="display:flex;gap:4px">
+      <input id="newGroupName" placeholder="新建分组名..." style="flex:1;background:#0d151f;border:1px solid #1a2a3a;color:#d0d8e0;padding:6px 8px;border-radius:4px;font-size:12px">
+      <button class="btn btn-sm btn-primary" onclick="createGroup()">+ 新建</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeById('modalGroupManager')">关闭</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const API = '';
 const MTX_HLS = 'http://192.0.2.107:8888';
@@ -404,6 +479,7 @@ function switchTab(name) {
   if (name==='recordings') { loadRecordings(); }
   if (name==='schedule') { loadSchedules(); }
   if (name==='snapshots') { loadSnapshots(); }
+  if (name==='faces') { loadFaces(); }
   if (name==='status') loadStatus();
 }
 
@@ -418,16 +494,27 @@ async function renderLive() {
     var sorted = [];
     var devMap = {};
     devs.forEach(function(d){ devMap[d.id] = d; });
-    // First add saved-order devices that still exist
     savedOrder.forEach(function(id) {
       if (devMap[id]) {
         sorted.push(devMap[id]);
         delete devMap[id];
       }
     });
-    // Then add any new devices not yet in saved order
     Object.keys(devMap).forEach(function(id) { sorted.push(devMap[id]); });
     devs = sorted;
+  }
+
+  // Populate group filter dropdown
+  var gf = document.getElementById('groupFilter');
+  var groups = await api('/api/groups');
+  var selGroup = gf.value;
+  gf.innerHTML = '<option value="">🏷️ 全部</option>';
+  if (groups) groups.forEach(function(g) {
+    gf.innerHTML += '<option value="'+escAttr(g.name)+'"'+(selGroup===g.name?' selected':'')+'>'+esc(g.name)+' ('+g.count+')</option>';
+  });
+  // Filter by selected group
+  if (selGroup) {
+    devs = devs.filter(function(d) { return (d.group_name||'未分组') === selGroup; });
   }
 
   let cards = devs.map(d => {
@@ -441,7 +528,9 @@ async function renderLive() {
       <video id="lvVid-${d.id}" muted playsinline ${w?'':'style="display:none"'} src="${w?MTX_HLS+'/live/'+d.id+'/index.m3u8':''}" ondblclick="fullscreenVid('${d.id}')"></video>
       <button class="fullscreen-btn" id="lvFsBtn-${d.id}" onclick="fullscreenVid('${d.id}')">⛶</button>
       <div class="info-bar">
-        <span class="name">${esc(d.name)}</span>
+        <span class="name">${esc(d.name)}
+          ${d.group_name?'<span style="font-size:9px;color:#5a7288;background:#0d151f;padding:1px 4px;border-radius:2px;margin-left:4px">'+esc(d.group_name)+'</span>':''}
+        </span>
         <select class="res-select" id="resSel-${d.id}" onchange="changeRes('${d.id}',this.value)" ${w?'':'disabled'} style="font-size:10px;background:#0a121a;color:#8aa0b8;border:1px solid #1e2d3d;border-radius:3px;padding:1px 4px;margin:0 4px">
           <option value="auto">自动</option>
           <option value="854x480">480p</option>
@@ -452,6 +541,7 @@ async function renderLive() {
         </select>
         <div style="display:flex;gap:4px">
           <button class="btn btn-sm btn-outline" id="lvVol-${d.id}" onclick="toggleMute('${d.id}')" style="display:${w?'':'none'}">🔇</button>
+          <button class="btn btn-sm btn-outline" id="lvTalk-${d.id}" onmousedown="talkStart('${d.id}')" onmouseup="talkStop('${d.id}')" onmouseleave="talkStop('${d.id}')" style="display:${w?'':'none'};color:#40c4ff" title="按住说话">🎤</button>
           <button class="btn btn-sm btn-outline" id="lvFull-${d.id}" onclick="fullscreenVid('${d.id}')" style="display:${w?'':'none'}">⛶</button>
           <button class="btn btn-sm ${w?'btn-danger':'btn-success'}" id="lvBtn-${d.id}"
             onclick="toggleLive('${d.id}')">${w?'停止':'观看'}</button>
@@ -499,13 +589,17 @@ async function renderLive() {
       const v = document.getElementById(`lvVid-${d.id}`);
       if (v) {
         fetch(MTX_HLS+'/live/'+d.id+'/index.m3u8', {credentials: 'include'}).catch(function(){});
-        var h = new Hls({
-          xhrSetup: function(x, u) { x.withCredentials = true; }
+        startWebRTC(v, d.id).then(function(ok) {
+          if (!ok) {
+            var h = new Hls({
+              xhrSetup: function(x, u) { x.withCredentials = true; }
+            });
+            h.loadSource(MTX_HLS+'/live/'+d.id+'/index.m3u8');
+            h.attachMedia(v);
+            h.on(Hls.Events.MANIFEST_PARSED, function() { v.play().catch(function(){}); });
+            window['hls_'+d.id] = h;
+          }
         });
-        h.loadSource(MTX_HLS+'/live/'+d.id+'/index.m3u8');
-        h.attachMedia(v);
-        h.on(Hls.Events.MANIFEST_PARSED, function() { v.play().catch(function(){}); });
-        window['hls_'+d.id] = h;
       }
       const ptz = document.getElementById('lvPtz-'+d.id);
       if (ptz) ptz.style.display='flex';
@@ -535,20 +629,40 @@ async function toggleLive(id) {
       document.getElementById('lvFull-'+id).style.display='';
       document.getElementById('resSel-'+id).disabled = false;
       document.getElementById('lvFsBtn-'+id).style.display='flex';
+      document.getElementById('lvTalk-'+id).style.display='';
       // Pre-fetch to set MediaMTX cookie
       fetch(MTX_HLS+'/live/'+id+'/index.m3u8', {credentials: 'include'}).catch(function(){});
-      // Use hls.js for HLS playback
-      var hls = new Hls({
-        xhrSetup: function(xhr, url) {
-          xhr.withCredentials = true;
+      // Try WebRTC first (lower latency), fall back to HLS
+      var protoBadge = document.getElementById('lvProto-'+id) || (function(){
+        var b = document.createElement('span');
+        b.id = 'lvProto-'+id;
+        b.style.cssText = 'position:absolute;top:32px;right:6px;font-size:9px;padding:1px 4px;border-radius:3px;z-index:3';
+        var c = document.getElementById('lvBtn-'+id).closest('.live-card');
+        if (c) c.appendChild(b);
+        return b;
+      })();
+      startWebRTC(vid, id).then(function(ok) {
+        if (ok) {
+          protoBadge.textContent = 'WebRTC';
+          protoBadge.style.background = '#0d3b2a';
+          protoBadge.style.color = '#69f0ae';
+        } else {
+          protoBadge.textContent = 'HLS';
+          protoBadge.style.background = '#3a2a1a';
+          protoBadge.style.color = '#ffcc80';
+          var hls = new Hls({
+            xhrSetup: function(xhr, url) {
+              xhr.withCredentials = true;
+            }
+          });
+          hls.loadSource(MTX_HLS+'/live/'+id+'/index.m3u8');
+          hls.attachMedia(vid);
+          hls.on(Hls.Events.MANIFEST_PARSED, function() {
+            vid.play().catch(function(){});
+          });
+          window['hls_'+id] = hls;
         }
       });
-      hls.loadSource(MTX_HLS+'/live/'+id+'/index.m3u8');
-      hls.attachMedia(vid);
-      hls.on(Hls.Events.MANIFEST_PARSED, function() {
-        vid.play().catch(function(){});
-      });
-      window['hls_'+id] = hls;
     } else {
       btn.textContent='观看'; btn.className='btn btn-sm btn-success';
       toast(r.error||'失败','e');
@@ -566,7 +680,46 @@ async function toggleLive(id) {
     document.getElementById('lvFull-'+id).style.display='none';
     document.getElementById('resSel-'+id).disabled = true;
     document.getElementById('lvFsBtn-'+id).style.display='none';
+    document.getElementById('lvTalk-'+id).style.display='none';
     if (window['hls_'+id]) { window['hls_'+id].destroy(); delete window['hls_'+id]; }
+    if (window['webrtc_'+id]) { window['webrtc_'+id].close(); delete window['webrtc_'+id]; }
+    var pb = document.getElementById('lvProto-'+id);
+    if (pb) pb.remove();
+  }
+}
+
+// ===== WebRTC Playback (WHEP via MediaMTX) =====
+async function startWebRTC(videoEl, streamId) {
+  var mtxHost = MTX_HLS.replace(/^https?:\/\//,'').replace(/:\d+$/, '');
+  var whepURL = 'http://' + mtxHost + ':8889/live/' + streamId + '/whep';
+  try {
+    var pc = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    });
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    pc.addTransceiver('audio', { direction: 'recvonly' });
+    var offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    var resp = await fetch(whepURL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/sdp' },
+      body: offer.sdp
+    });
+    if (!resp.ok) { pc.close(); return false; }
+    var answerSdp = await resp.text();
+    await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+    pc.ontrack = function(event) {
+      videoEl.srcObject = event.streams[0];
+      videoEl.play().catch(function(){});
+    };
+    pc.oniceconnectionstatechange = function() {
+      if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {}
+    };
+    window['webrtc_'+streamId] = pc;
+    return true;
+  } catch (e) {
+    console.warn('WebRTC failed for', streamId, e);
+    return false;
   }
 }
 
@@ -592,7 +745,6 @@ async function submitAddForm() {
   if (!name) { name = url.replace(/^rtsp:\/\//,'').replace(/^http:\/\//,'').replace('/dev/','').split('/')[0]; }
   if (!url) { toast('请填地址','e'); return; }
 
-  // Auto-fix protocol prefix for USB
   if (proto === 'usb') { url = url; }
   else if (proto === 'http' && !url.startsWith('http')) { url = 'http://'+url; }
   else if (proto === 'rtsp' && !url.startsWith('rtsp://')) { url = 'rtsp://'+url; }
@@ -612,7 +764,6 @@ async function submitAddForm() {
     toast('摄像头已添加');
     closeAddForm();
     await renderLive();
-    // Auto-start watching
     setTimeout(() => toggleLive(r.id), 500);
   } else {
     toast('添加失败','e');
@@ -631,15 +782,91 @@ async function delCam(id) {
 // ===== RECORD =====
 async function loadRecordings() {
   const r=await api('/api/recordings');
-  const tb=document.getElementById('recTable');
-  if (!r.length){tb.innerHTML='<tr><td colspan="5" class="empty">暂无录像</td></tr>';return;}
-  tb.innerHTML=r.map(x=>`<tr><td style="font-size:11px;color:#6b8299">${esc(x.device_id)}</td>
-    <td>${x.start_time?new Date(x.start_time).toLocaleString():'-'}</td>
-    <td>${x.duration?x.duration+'s':'-'}</td>
-    <td>${x.file_size?sz(x.file_size):'-'}</td>
-    <td><a href="${x.play_url||'#'}" target="_blank" class="btn btn-sm btn-primary">▶</a></td>
-  </tr>`).join('');
+
+  // Load disk stats
+  try {
+    const storage=await api('/api/storage');
+    if (storage && storage.disk) {
+      var d=storage.disk;
+      document.getElementById('recStorageBar').style.display='block';
+      var bar=document.getElementById('recDiskBar');
+      var pct=d.used_percent.toFixed(0);
+      bar.style.width=pct+'%';
+      bar.style.background=pct>80?'#ef5350':pct>60?'#ffa726':'#66bb6a';
+      document.getElementById('recDiskLabel').textContent='💾 录像('+d.recording_count+'个)';
+      document.getElementById('recDiskText').textContent=sz(d.used_bytes)+' / '+sz(d.total_bytes)+' ('+pct+'%)';
+    }
+  } catch(e) {}
+
+  window._allRecordings=r;
+  filterRecordings();
 }
+
+window._allRecordings=[];
+
+function filterRecordings() {
+  var r=window._allRecordings||[];
+  var q=document.getElementById('recSearch').value.trim().toLowerCase();
+  var dFrom=document.getElementById('recDateFrom').value;
+  var dTo=document.getElementById('recDateTo').value;
+
+  if (q) r=r.filter(x=>x.device_id.toLowerCase().includes(q));
+  if (dFrom) r=r.filter(x=>x.start_time&&x.start_time>=dFrom);
+  if (dTo) r=r.filter(x=>x.start_time&&x.start_time<=dTo+'T23:59:59');
+
+  var tb=document.getElementById('recTable');
+  if (!r.length){tb.innerHTML='<tr><td colspan="7" class="empty">暂无录像</td></tr>';return;}
+  tb.innerHTML=r.map(x=>{
+    var typeLabel=x.event_type==='motion'?'🏃 运动':'📹 手动';
+    return `<tr>
+      <td style="font-size:11px;color:#6b8299">${esc(x.device_id)}</td>
+      <td>${x.start_time?new Date(x.start_time).toLocaleString():'-'}</td>
+      <td>${x.duration?x.duration+'s':'-'}</td>
+      <td>${x.file_size?sz(x.file_size):'-'}</td>
+      <td><span class="badge badge-${x.event_type==='motion'?'online':'offline'}">${typeLabel}</span></td>
+      <td><a href="${x.play_url||'#'}" target="_blank" class="btn btn-sm btn-primary">▶</a></td>
+      <td><button class="btn btn-sm btn-outline" style="color:#ef5350" onclick="deleteRecording('${x.id}')">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function deleteRecording(id) {
+  if (!confirm('确定删除这条录像？')) return;
+  await api('/api/recordings?id='+id,{method:'DELETE'});
+  loadRecordings();
+}
+
+// ===== STORAGE SETTINGS =====
+async function showStorageSettings() {
+  var s=await api('/api/storage');
+  if (s && s.retention) {
+    document.getElementById('fRetDays').value=s.retention.retention_days;
+    document.getElementById('fMaxDisk').value=s.retention.max_disk_usage_pct;
+    document.getElementById('fRetEnabled').checked=s.retention.enabled;
+  }
+  document.getElementById('cleanupResult').textContent='';
+  closeById('modalStorage');
+  document.getElementById('modalStorage').style.display='flex';
+}
+
+async function saveStorageSettings() {
+  var rc={
+    retention_days: +document.getElementById('fRetDays').value||30,
+    max_disk_usage_pct: +document.getElementById('fMaxDisk').value||80,
+    enabled: document.getElementById('fRetEnabled').checked,
+  };
+  await api('/api/storage',{method:'PUT',body:rc});
+  toast('存储设置已保存');
+  closeById('modalStorage');
+}
+
+async function manualCleanup() {
+  document.getElementById('cleanupResult').textContent='清理中...';
+  var r=await api('/api/storage',{method:'POST'});
+  document.getElementById('cleanupResult').textContent=r.deleted>0?'🧹 已清理 '+r.deleted+' 个录像':'✓ 无需清理';
+  loadRecordings();
+}
+
 async function showRecord() {
   const d=await api('/api/devices');
   document.getElementById('fRecDev').innerHTML=d.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');
@@ -692,7 +919,6 @@ async function showAddSchedule() {
   document.getElementById('schedSubmitBtn').textContent='添加';
   document.getElementById('modalSchedule').style.display='flex';
 }
-// Day all toggle
 document.addEventListener('change',function(e){
   if(e.target.id==='dayAll'){
     document.querySelectorAll('.day-cb').forEach(c=>c.checked=e.target.checked);
@@ -805,7 +1031,6 @@ async function delSnap(id) {
   toast('已关闭');loadSnapshots();
 }
 async function showSnapGallery(id) {
-  // Toggle: if already showing list, hide it; otherwise fetch and show
   const existing=document.getElementById('snap-gallery-'+id);
   if(existing){existing.remove();return;}
   const list=await api('/api/snapshots/list/'+id);
@@ -831,12 +1056,52 @@ async function loadStatus() {
 }
 
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);}
+function escAttr(s){return String(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function sz(b){if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(1)+'KB';return(b/1048576).toFixed(1)+'MB';}
 function closeById(id){document.getElementById(id).style.display='none';}
 function closeIfBg(e,id){if(e.target===e.currentTarget)document.getElementById(id).style.display='none';}
 
 setInterval(loadStatus,10000);
 setInterval(()=>{if(document.getElementById('tab-live').classList.contains('active'))renderLive();},15000);
+
+// ===== SSE Event Stream =====
+(function() {
+  if (!window.EventSource) return;
+  var es = new EventSource('/api/events');
+  es.addEventListener('connected', function() {
+    console.log('[SSE] connected');
+  });
+  es.onmessage = function(e) {
+    try {
+      var evt = JSON.parse(e.data);
+      if (evt.type === 'motion') {
+        var d = evt.data;
+        var name = d.device_name || d.device_id;
+        // Show browser notification
+        if ('Notification' in window && Notification.permission === 'granted') {
+          var n = new Notification('🔴 运动检测: ' + name, {
+            body: new Date(d.detected_at).toLocaleString(),
+            tag: 'motion-' + d.device_id,
+            requireInteraction: true
+          });
+          n.onclick = function() {
+            window.focus();
+            switchTab('live');
+          };
+          setTimeout(function() { n.close(); }, 8000);
+        }
+      }
+    } catch(e) {}
+  };
+  es.onerror = function() {
+    // Will auto-reconnect
+  };
+})();
+
+// Request notification permission
+if ('Notification' in window && Notification.permission === 'default') {
+  Notification.requestPermission();
+}
 
 renderLive(); loadRecordings(); loadSchedules(); loadSnapshots(); loadStatus();
 
@@ -846,6 +1111,81 @@ function toggleMute(id) {
   if (!v) return;
   v.muted = !v.muted;
   document.getElementById('lvVol-'+id).textContent = v.muted ? '🔇' : '🔊';
+}
+
+// ===== PUSH-TO-TALK =====
+var talkStreams = {};  // MediaStream per device
+var talkWS = {};       // WebSocket per device
+var talkAudioCtx = {}; // AudioContext per device
+
+function talkStart(id) {
+  if (talkWS[id]) return; // already talking
+
+  var ws = new WebSocket('ws://' + location.host + '/api/talk/' + id);
+  talkWS[id] = ws;
+
+  ws.onopen = function() {
+    var btn = document.getElementById('lvTalk-'+id);
+    if (btn) { btn.style.background = '#40c4ff'; btn.style.color = '#000'; btn.textContent = '🔊'; }
+
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+      talkStreams[id] = stream;
+      var ctx = new AudioContext();
+      talkAudioCtx[id] = ctx;
+      var src = ctx.createMediaStreamSource(stream);
+      var processor = ctx.createScriptProcessor(4096, 1, 1);
+      src.connect(processor);
+      processor.connect(ctx.destination);
+
+      processor.onaudioprocess = function(e) {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        var input = e.inputBuffer.getChannelData(0);
+        // Convert Float32 to PCM s16le
+        var buf = new Int16Array(input.length);
+        for (var i = 0; i < input.length; i++) {
+          var s = Math.max(-1, Math.min(1, input[i]));
+          buf[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        ws.send(buf.buffer);
+      };
+    }).catch(function(err) {
+      console.warn('[talk] mic access denied:', err);
+      talkStop(id);
+    });
+  };
+
+  ws.onclose = function() {
+    talkCleanup(id);
+  };
+
+  ws.onerror = function() {
+    talkCleanup(id);
+  };
+}
+
+function talkStop(id) {
+  if (talkAudioCtx[id]) {
+    talkAudioCtx[id].close().catch(function(){});
+    delete talkAudioCtx[id];
+  }
+  if (talkStreams[id]) {
+    talkStreams[id].getTracks().forEach(function(t) { t.stop(); });
+    delete talkStreams[id];
+  }
+  if (talkWS[id]) {
+    talkWS[id].close();
+    delete talkWS[id];
+  }
+  var btn = document.getElementById('lvTalk-'+id);
+  if (btn) { btn.style.background = ''; btn.style.color = '#40c4ff'; btn.textContent = '🎤'; }
+}
+
+function talkCleanup(id) {
+  if (talkAudioCtx[id]) { talkAudioCtx[id].close().catch(function(){}); delete talkAudioCtx[id]; }
+  if (talkStreams[id]) { talkStreams[id].getTracks().forEach(function(t) { t.stop(); }); delete talkStreams[id]; }
+  delete talkWS[id];
+  var btn = document.getElementById('lvTalk-'+id);
+  if (btn) { btn.style.background = ''; btn.style.color = '#40c4ff'; btn.textContent = '🎤'; }
 }
 
 // ===== FULLSCREEN =====
@@ -907,7 +1247,6 @@ async function loadDirector() {
     'PGM: ' + (status.pgm?.status || 'idle') +
     ' | 信号: ' + (sources?.length || 0) + ' 路';
 
-  // Update PGM display without touching preview grid
   const pgmVid = document.getElementById('dirPGMVid');
   const pgmPlace = document.getElementById('dirPGMPlaceholder');
   if (status.pgm?.status === 'live') {
@@ -922,18 +1261,15 @@ async function loadDirector() {
     pgmPlace.style.display = 'flex';
   }
 
-  // Render preview grid only if empty
   const grid = document.getElementById('dirPreview');
   if (!grid.children.length || grid.children.length !== sources.length) {
     renderPreviewGrid(grid, sources);
   } else {
-    // Just update active class
     grid.querySelectorAll('.dir-sub').forEach(el => {
       el.classList.toggle('active', el.dataset.sourceId === selectedSource);
     });
   }
 
-  // Auto-refresh PGM status every 5s (don't reload grid)
   clearTimeout(dirRefreshTimer);
   dirRefreshTimer = setTimeout(loadDirector, 5000);
 }
@@ -967,7 +1303,6 @@ function renderPreviewGrid(grid, sources) {
 
 function selectSource(id) {
   selectedSource = id;
-  // Just toggle active class, don't reload
   document.querySelectorAll('#dirPreview .dir-sub').forEach(el => {
     el.classList.toggle('active', el.dataset.sourceId === id);
   });
@@ -1033,19 +1368,22 @@ async function changeRes(id, res) {
   const data = await r.json();
   if (data.status === 'updated') {
     toast('已切换到 '+res);
-    // Reconnect video
     if (wasRunning && data.deviceId === id) {
-      // Reconnect hls.js after resolution switch
-      if (window['hls_'+id]) { window['hls_'+id].destroy(); }
+      if (window['hls_'+id]) { window['hls_'+id].destroy(); delete window['hls_'+id]; }
+      if (window['webrtc_'+id]) { window['webrtc_'+id].close(); delete window['webrtc_'+id]; }
       var vid2 = document.getElementById('lvVid-'+id);
       if (vid2) {
-        var h2 = new Hls({
-          xhrSetup: function(x, u) { x.withCredentials = true; }
+        startWebRTC(vid2, id).then(function(ok) {
+          if (!ok) {
+            var h2 = new Hls({
+              xhrSetup: function(x, u) { x.withCredentials = true; }
+            });
+            h2.loadSource(MTX_HLS+'/live/'+id+'/index.m3u8');
+            h2.attachMedia(vid2);
+            h2.on(Hls.Events.MANIFEST_PARSED, function() { vid2.play().catch(function(){}); });
+            window['hls_'+id] = h2;
+          }
         });
-        h2.loadSource(MTX_HLS+'/live/'+id+'/index.m3u8');
-        h2.attachMedia(vid2);
-        h2.on(Hls.Events.MANIFEST_PARSED, function() { vid2.play().catch(function(){}); });
-        window['hls_'+id] = h2;
       }
     }
   } else {
@@ -1068,6 +1406,7 @@ switchTab = function(name) {
   if (name==='snapshots') loadSnapshots();
   if (name==='director') loadDirector();
   if (name==='motion') loadMotion();
+  if (name==='faces') loadFaces();
   if (name==='discover') loadDiscover();
   if (name==='status') loadStatus();
 };
@@ -1111,13 +1450,11 @@ function swapCards(id1, id2) {
   var c1 = document.getElementById('lv-'+id1);
   var c2 = document.getElementById('lv-'+id2);
   if (!c1 || !c2) return;
-  // Insert c1 before c2 if before, else after
   if (c1.nextElementSibling === c2) {
     grid.insertBefore(c2, c1);
   } else if (c2.nextElementSibling === c1) {
     grid.insertBefore(c1, c2);
   } else {
-    // General case: swap by inserting one after the other
     var c2Next = c2.nextElementSibling;
     grid.insertBefore(c1, c2);
     if (c2Next) grid.insertBefore(c2, c2Next);
@@ -1182,7 +1519,6 @@ async function loadMotion() {
   }
   el.innerHTML = html;
 
-  // Timeline (all events grouped)
   var allEvents = await api('/api/motion/events/all?limit=50');
   var tl = document.getElementById('motionTimeline');
   if (!allEvents || !allEvents.length) { tl.innerHTML = ''; return; }
@@ -1233,6 +1569,126 @@ async function addMotion() {
   loadMotion();
 }
 
+// ===== FACES =====
+async function loadFaces() {
+  document.getElementById('faceStatus').textContent = '加载中...';
+  var faces = await api('/api/faces');
+  var faceList = document.getElementById('faceList');
+  if (!faces || !faces.length) {
+    faceList.innerHTML = '<div style="color:#5a7288;font-size:12px;padding:20px;text-align:center">暂无检测到人脸。开启运动检测后，有人经过时会自动捕捉。</div>';
+  } else {
+    var html = '';
+    for (var f of faces) {
+      var thumbSrc = f.thumb_path ? '/' + f.thumb_path.replace(/^.*?data\//, '') : '';
+      html += '<div style="background:#111b25;border:1px solid #1a2a3a;border-radius:6px;overflow:hidden">';
+      html += '<div style="width:100%;aspect-ratio:1;background:#060a0f;display:flex;align-items:center;justify-content:center;overflow:hidden">';
+      if (thumbSrc) {
+        html += '<img src="/faces/' + thumbSrc.split('/').pop() + '" style="width:100%;height:100%;object-fit:cover">';
+      } else {
+        html += '<span style="font-size:32px">👤</span>';
+      }
+      html += '</div>';
+      html += '<div style="padding:6px 8px">';
+      if (f.label === 'unknown') {
+        html += '<input id="flabel-'+f.id+'" placeholder="输入姓名..." style="width:100%;background:#0d151f;border:1px solid #1a2a3a;color:#d0d8e0;padding:3px 6px;border-radius:3px;font-size:11px" onkeydown="if(event.key===\'Enter\')saveFaceLabel(\''+f.id+'\')">';
+      } else {
+        html += '<div style="font-size:12px;font-weight:500">'+f.label+'</div>';
+      }
+      html += '<div style="font-size:10px;color:#5a7288;margin-top:2px">看到 '+f.seen_count+' 次</div>';
+      html += '<div style="font-size:10px;color:#5a7288">最后 '+fmtTime(f.last_seen_at)+'</div>';
+      html += '</div></div>';
+    }
+    faceList.innerHTML = html;
+  }
+
+  var events = await api('/api/face-events?limit=50');
+  var tb = document.getElementById('faceEventTable');
+  if (!events || !events.length) {
+    tb.innerHTML = '<tr><td colspan="5" style="color:#5a7288;text-align:center;padding:12px">暂无识别记录</td></tr>';
+  } else {
+    var html = '';
+    for (var e of events) {
+      var thumbSrc2 = e.thumb_path ? '/faces/' + e.thumb_path.split('/').pop() : '';
+      html += '<tr>';
+      html += '<td style="white-space:nowrap">'+fmtTime(e.detected_at)+'</td>';
+      html += '<td>'+e.device_id.slice(0,8)+'</td>';
+      html += '<td>'+(e.label==='unknown'?'❓ '+e.label: e.label)+'</td>';
+      html += '<td>'+(e.confidence>0?(e.confidence*100).toFixed(0)+'%':' - ')+'</td>';
+      html += '<td>';
+      if (thumbSrc2) {
+        html += '<img src="'+thumbSrc2+'" style="width:40px;height:40px;border-radius:4px;object-fit:cover;cursor:pointer" onclick="window.open(this.src)">';
+      } else {
+        html += '-';
+      }
+      html += '</td></tr>';
+    }
+    tb.innerHTML = html;
+  }
+  document.getElementById('faceStatus').textContent = '✓ ' + (faces ? faces.length : 0) + ' 个人脸';
+}
+
+async function saveFaceLabel(faceId) {
+  var input = document.getElementById('flabel-'+faceId);
+  var label = input.value.trim();
+  if (!label) return;
+  await api('/api/faces/'+faceId, {method: 'PUT', body: {label: label}});
+  loadFaces();
+}
+
+function fmtTime(t) {
+  if (!t) return '-';
+  try { return new Date(t).toLocaleString(); } catch(e) { return t; }
+}
+
+// ===== GROUPS =====
+async function showGroupManager() {
+  var groups = await api('/api/groups');
+  var el = document.getElementById('groupList');
+  if (!groups || !groups.length) {
+    el.innerHTML = '<div style="color:#5a7288;font-size:12px">暂无分组</div>';
+  } else {
+    var html = '';
+    for (var g of groups) {
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:#0d151f;border:1px solid #1a2a3a;border-radius:4px;margin-bottom:4px">';
+      html += '<span style="flex:1;font-size:12px">'+esc(g.name)+' <span style="color:#5a7288">('+g.count+' 设备)</span></span>';
+      if (g.name !== '未分组') {
+        html += '<button class="btn btn-sm btn-outline" onclick="renameGroup(\''+escAttr(g.name)+'\')" style="font-size:10px">✏️</button>';
+        html += '<button class="btn btn-sm btn-outline" onclick="deleteGroup(\''+escAttr(g.name)+'\')" style="font-size:10px;color:#ef5350">✕</button>';
+      }
+      html += '</div>';
+    }
+    el.innerHTML = html;
+  }
+  document.getElementById('newGroupName').value = '';
+  document.getElementById('modalGroupManager').style.display='flex';
+}
+
+async function renameGroup(oldName) {
+  var newName = prompt('重命名分组 "'+oldName+'" 为:', oldName);
+  if (!newName || newName === oldName) return;
+  await api('/api/groups', {method:'PUT', body:{old: oldName, new: newName}});
+  showGroupManager();
+  renderLive();
+}
+
+async function deleteGroup(name) {
+  if (!confirm('将 "'+name+'" 分组下的设备移回未分组？')) return;
+  await api('/api/groups', {method:'PUT', body:{old: name, new: ''}});
+  showGroupManager();
+  renderLive();
+}
+
+async function createGroup() {
+  var name = document.getElementById('newGroupName').value.trim();
+  if (!name) { toast('请输入分组名','e'); return; }
+  // "Create" by renaming "未分组" (no-op if no devices in 未分组)
+  await api('/api/groups', {method:'PUT', body:{old: '', new: name}});
+  toast('已创建分组: '+name);
+  document.getElementById('newGroupName').value = '';
+  showGroupManager();
+  renderLive();
+}
+
 // ===== DEVICE DISCOVERY =====
 var discoverTimer = null;
 var discoverIPs = [];
@@ -1261,7 +1717,6 @@ async function startScan() {
   document.getElementById('scanProgress').textContent = '正在启动扫描...';
   var r = await api('/api/discover/start', {method:'POST'});
   if (r.status === 'scan_started') {
-    // Poll for progress
     if (discoverTimer) clearInterval(discoverTimer);
     discoverTimer = setInterval(loadDiscover, 2000);
     setTimeout(loadDiscover, 500);
@@ -1355,9 +1810,7 @@ async function importSelected() {
   if (r.status === 'ok') {
     toast('✅ 成功导入 ' + r.imported + '/' + r.requested + ' 个设备');
     statusEl.textContent = '已导入 ' + r.imported + '/' + r.requested + ' 个';
-    // Refresh live view
     renderLive();
-    // Re-check scan to update display
     loadDiscover();
   } else {
     toast(r.error || '导入失败', 'e');

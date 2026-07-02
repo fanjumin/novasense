@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,6 +28,7 @@ type Device struct {
 	Status    string `json:"status"`
 	GroupName string `json:"group_name"`
 	CreatedAt string `json:"created_at"`
+	Capability string `json:"capability,omitempty"` // JSON blob from phone self-check
 }
 
 type Recording struct {
@@ -173,6 +175,36 @@ func (s *Store) migrate() {
 			created_at TEXT NOT NULL DEFAULT '',
 			expires_at TEXT NOT NULL DEFAULT ''
 		)`,
+		`CREATE TABLE IF NOT EXISTS faces (
+			id TEXT PRIMARY KEY,
+			label TEXT NOT NULL DEFAULT 'unknown',
+			face_hash TEXT NOT NULL DEFAULT '',
+			device_id TEXT NOT NULL DEFAULT '',
+			thumb_path TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT '',
+			last_seen_at TEXT NOT NULL DEFAULT '',
+			seen_count INTEGER NOT NULL DEFAULT 0
+		)`,
+		`CREATE TABLE IF NOT EXISTS face_events (
+			id TEXT PRIMARY KEY,
+			motion_event_id TEXT NOT NULL DEFAULT '',
+			device_id TEXT NOT NULL DEFAULT '',
+			face_id TEXT NOT NULL DEFAULT '',
+			label TEXT NOT NULL DEFAULT 'unknown',
+			confidence REAL NOT NULL DEFAULT 0.0,
+			score REAL NOT NULL DEFAULT 0.0,
+			bounds TEXT NOT NULL DEFAULT '',
+			thumb_path TEXT NOT NULL DEFAULT '',
+			detected_at TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE TABLE IF NOT EXISTS retention_config (
+			id TEXT PRIMARY KEY,
+			retention_days INTEGER NOT NULL DEFAULT 30,
+			max_disk_usage_pct REAL NOT NULL DEFAULT 80.0,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			updated_at TEXT NOT NULL DEFAULT ''
+		)`,
 	}
 
 	for _, ddl := range tables {
@@ -188,7 +220,7 @@ func (s *Store) migrate() {
 func (s *Store) ListDevices() []*Device {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	rows, err := s.db.Query("SELECT id, name, protocol, url, username, password, status, group_name, created_at FROM devices ORDER BY created_at DESC")
+	rows, err := s.db.Query("SELECT id, name, protocol, url, username, password, status, group_name, created_at, IFNULL(capability,'') FROM devices ORDER BY created_at DESC")
 	if err != nil {
 		log.Printf("[store] list devices: %v", err)
 		return nil
@@ -197,7 +229,7 @@ func (s *Store) ListDevices() []*Device {
 	var result []*Device
 	for rows.Next() {
 		d := &Device{}
-		rows.Scan(&d.ID, &d.Name, &d.Protocol, &d.URL, &d.Username, &d.Password, &d.Status, &d.GroupName, &d.CreatedAt)
+		rows.Scan(&d.ID, &d.Name, &d.Protocol, &d.URL, &d.Username, &d.Password, &d.Status, &d.GroupName, &d.CreatedAt, &d.Capability)
 		result = append(result, d)
 	}
 	return result
@@ -207,8 +239,8 @@ func (s *Store) GetDevice(id string) *Device {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	d := &Device{}
-	err := s.db.QueryRow("SELECT id, name, protocol, url, username, password, status, group_name, created_at FROM devices WHERE id=?", id).
-		Scan(&d.ID, &d.Name, &d.Protocol, &d.URL, &d.Username, &d.Password, &d.Status, &d.GroupName, &d.CreatedAt)
+	err := s.db.QueryRow("SELECT id, name, protocol, url, username, password, status, group_name, created_at, IFNULL(capability,'') FROM devices WHERE id=?", id).
+		Scan(&d.ID, &d.Name, &d.Protocol, &d.URL, &d.Username, &d.Password, &d.Status, &d.GroupName, &d.CreatedAt, &d.Capability)
 	if err != nil {
 		return nil
 	}
@@ -235,6 +267,56 @@ func (s *Store) DeleteDevice(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.db.Exec("DELETE FROM devices WHERE id=?", id)
+}
+
+// UpdateDeviceGroup updates the group_name for a device.
+func (s *Store) UpdateDeviceGroup(id, groupName string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.db.Exec("UPDATE devices SET group_name=? WHERE id=?", groupName, id)
+}
+
+// ListGroups returns all distinct group names with device counts.
+type GroupInfo struct {
+	Name   string `json:"name"`
+	Count  int    `json:"count"`
+}
+
+func (s *Store) ListGroups() []*GroupInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	rows, err := s.db.Query("SELECT IFNULL(group_name,'未分组'), COUNT(*) FROM devices GROUP BY group_name ORDER BY group_name")
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var result []*GroupInfo
+	for rows.Next() {
+		g := &GroupInfo{}
+		rows.Scan(&g.Name, &g.Count)
+		result = append(result, g)
+	}
+	if result == nil {
+		result = []*GroupInfo{}
+	}
+	return result
+}
+
+// RenameGroup changes all devices with oldGroup to newGroup.
+func (s *Store) RenameGroup(oldGroup, newGroup string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.db.Exec("UPDATE devices SET group_name=? WHERE group_name=?", newGroup, oldGroup)
+}
+
+// SetDeviceCapability — stores JSON capability blob on a device record
+func (s *Store) SetDeviceCapability(deviceID string, capability map[string]interface{}) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Try to add capability column if not exists (idempotent)
+	s.db.Exec("ALTER TABLE devices ADD COLUMN capability TEXT DEFAULT ''")
+	b, _ := json.Marshal(capability)
+	s.db.Exec("UPDATE devices SET capability=? WHERE id=?", string(b), deviceID)
 }
 
 // ============ Recordings ============
@@ -683,4 +765,298 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// ============ Faces (Known Faces) ============
+
+func (s *Store) ListFaces() []*KnownFace {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	rows, err := s.db.Query("SELECT id, label, face_hash, device_id, thumb_path, created_at, last_seen_at, seen_count FROM faces ORDER BY seen_count DESC, last_seen_at DESC")
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var result []*KnownFace
+	for rows.Next() {
+		f := &KnownFace{}
+		rows.Scan(&f.ID, &f.Label, &f.FaceHash, &f.DeviceID, &f.ThumbPath, &f.CreatedAt, &f.LastSeenAt, &f.SeenCount)
+		result = append(result, f)
+	}
+	return result
+}
+
+func (s *Store) GetFace(id string) *KnownFace {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	f := &KnownFace{}
+	err := s.db.QueryRow("SELECT id, label, face_hash, device_id, thumb_path, created_at, last_seen_at, seen_count FROM faces WHERE id=?", id).
+		Scan(&f.ID, &f.Label, &f.FaceHash, &f.DeviceID, &f.ThumbPath, &f.CreatedAt, &f.LastSeenAt, &f.SeenCount)
+	if err != nil {
+		return nil
+	}
+	return f
+}
+
+// FindFaceByHash finds a face by exact hash match (for dedup)
+func (s *Store) FindFaceByHash(hash string) *KnownFace {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	f := &KnownFace{}
+	err := s.db.QueryRow("SELECT id, label, face_hash, device_id, thumb_path, created_at, last_seen_at, seen_count FROM faces WHERE face_hash=?", hash).
+		Scan(&f.ID, &f.Label, &f.FaceHash, &f.DeviceID, &f.ThumbPath, &f.CreatedAt, &f.LastSeenAt, &f.SeenCount)
+	if err != nil {
+		return nil
+	}
+	return f
+}
+
+// AddFace inserts a new known face. Sets ID and timestamps.
+func (s *Store) AddFace(f *KnownFace) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f.ID = uuid.NewString()[:8]
+	now := time.Now().Format(time.RFC3339)
+	f.CreatedAt = now
+	f.LastSeenAt = now
+	f.SeenCount = 1
+	s.db.Exec("INSERT INTO faces (id, label, face_hash, device_id, thumb_path, created_at, last_seen_at, seen_count) VALUES (?,?,?,?,?,?,?,?)",
+		f.ID, f.Label, f.FaceHash, f.DeviceID, f.ThumbPath, f.CreatedAt, f.LastSeenAt, f.SeenCount)
+}
+
+// UpdateFaceSeen updates last_seen_at and seen_count for a known face.
+func (s *Store) UpdateFaceSeen(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().Format(time.RFC3339)
+	s.db.Exec("UPDATE faces SET last_seen_at=?, seen_count=seen_count+1 WHERE id=?", now, id)
+}
+
+// UpdateFaceLabel updates the label/name of a known face.
+func (s *Store) UpdateFaceLabel(id, label string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.db.Exec("UPDATE faces SET label=? WHERE id=?", label, id)
+}
+
+func (s *Store) DeleteFace(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.db.Exec("DELETE FROM faces WHERE id=?", id)
+}
+
+// ============ Face Events ============
+
+func (s *Store) AddFaceEvent(e *FaceEvent) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e.ID = uuid.NewString()[:8]
+	e.CreatedAt = time.Now().Format(time.RFC3339)
+	s.db.Exec("INSERT INTO face_events (id, motion_event_id, device_id, face_id, label, confidence, score, bounds, thumb_path, detected_at, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+		e.ID, e.MotionEventID, e.DeviceID, e.FaceID, e.Label, e.Confidence, e.Score, e.Bounds, e.ThumbPath, e.DetectedAt, e.CreatedAt)
+}
+
+// ListFaceEvents returns face events, optionally filtered by device_id.
+func (s *Store) ListFaceEvents(deviceID string, limit int) []*FaceEvent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if limit <= 0 {
+		limit = 50
+	}
+	var rows *sql.Rows
+	var err error
+	if deviceID != "" {
+		rows, err = s.db.Query("SELECT id, motion_event_id, device_id, face_id, label, confidence, score, bounds, thumb_path, detected_at, created_at FROM face_events WHERE device_id=? ORDER BY detected_at DESC LIMIT ?", deviceID, limit)
+	} else {
+		rows, err = s.db.Query("SELECT id, motion_event_id, device_id, face_id, label, confidence, score, bounds, thumb_path, detected_at, created_at FROM face_events ORDER BY detected_at DESC LIMIT ?", limit)
+	}
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var result []*FaceEvent
+	for rows.Next() {
+		e := &FaceEvent{}
+		rows.Scan(&e.ID, &e.MotionEventID, &e.DeviceID, &e.FaceID, &e.Label, &e.Confidence, &e.Score, &e.Bounds, &e.ThumbPath, &e.DetectedAt, &e.CreatedAt)
+		result = append(result, e)
+	}
+	return result
+}
+
+// ListFaceEventsByMotion returns all face events for a specific motion event.
+func (s *Store) ListFaceEventsByMotion(motionEventID string) []*FaceEvent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	rows, err := s.db.Query("SELECT id, motion_event_id, device_id, face_id, label, confidence, score, bounds, thumb_path, detected_at, created_at FROM face_events WHERE motion_event_id=? ORDER BY score DESC", motionEventID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var result []*FaceEvent
+	for rows.Next() {
+		e := &FaceEvent{}
+		rows.Scan(&e.ID, &e.MotionEventID, &e.DeviceID, &e.FaceID, &e.Label, &e.Confidence, &e.Score, &e.Bounds, &e.ThumbPath, &e.DetectedAt, &e.CreatedAt)
+		result = append(result, e)
+	}
+	return result
+}
+
+// DeleteFaceEvent removes a face event record.
+func (s *Store) DeleteFaceEvent(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.db.Exec("DELETE FROM face_events WHERE id=?", id)
+}
+
+// ============ Retention / Storage Management ============
+
+type RetentionConfig struct {
+	ID              string  `json:"id"`
+	RetentionDays   int     `json:"retention_days"`
+	MaxDiskUsagePct float64 `json:"max_disk_usage_pct"`
+	Enabled         bool    `json:"enabled"`
+	UpdatedAt       string  `json:"updated_at"`
+}
+
+// GetRetentionConfig returns the current retention config, inserting defaults if none exists.
+func (s *Store) GetRetentionConfig() *RetentionConfig {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rc := &RetentionConfig{}
+	err := s.db.QueryRow("SELECT id, retention_days, max_disk_usage_pct, enabled, updated_at FROM retention_config LIMIT 1").
+		Scan(&rc.ID, &rc.RetentionDays, &rc.MaxDiskUsagePct, &rc.Enabled, &rc.UpdatedAt)
+	if err != nil {
+		// Insert default
+		rc.ID = uuid.NewString()[:8]
+		rc.RetentionDays = 30
+		rc.MaxDiskUsagePct = 80.0
+		rc.Enabled = true
+		rc.UpdatedAt = time.Now().Format(time.RFC3339)
+		s.db.Exec("INSERT INTO retention_config (id, retention_days, max_disk_usage_pct, enabled, updated_at) VALUES (?,?,?,?,?)",
+			rc.ID, rc.RetentionDays, rc.MaxDiskUsagePct, 1, rc.UpdatedAt)
+	}
+	return rc
+}
+
+// UpdateRetentionConfig saves a new retention config.
+func (s *Store) UpdateRetentionConfig(rc *RetentionConfig) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rc.UpdatedAt = time.Now().Format(time.RFC3339)
+	existing := &RetentionConfig{}
+	err := s.db.QueryRow("SELECT id FROM retention_config LIMIT 1").Scan(&existing.ID)
+	if err != nil {
+		rc.ID = uuid.NewString()[:8]
+		en := 0
+		if rc.Enabled {
+			en = 1
+		}
+		s.db.Exec("INSERT INTO retention_config (id, retention_days, max_disk_usage_pct, enabled, updated_at) VALUES (?,?,?,?,?)",
+			rc.ID, rc.RetentionDays, rc.MaxDiskUsagePct, en, rc.UpdatedAt)
+		return
+	}
+	en := 0
+	if rc.Enabled {
+		en = 1
+	}
+	s.db.Exec("UPDATE retention_config SET retention_days=?, max_disk_usage_pct=?, enabled=?, updated_at=? WHERE id=?",
+		rc.RetentionDays, rc.MaxDiskUsagePct, en, rc.UpdatedAt, existing.ID)
+}
+
+// DeleteOldRecordings removes recordings and their files that exceed retention or disk usage.
+// Returns count of deleted recordings.
+func (s *Store) DeleteOldRecordings(rc *RetentionConfig) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	cutoff := time.Now().AddDate(0, 0, -rc.RetentionDays).Format(time.RFC3339)
+	rows, err := s.db.Query("SELECT id, file_path FROM recordings WHERE created_at < ?", cutoff)
+	if err != nil {
+		log.Printf("[storage] query old recordings: %v", err)
+		return 0
+	}
+	defer rows.Close()
+
+	var ids []string
+	var paths []string
+	for rows.Next() {
+		var id, fp string
+		rows.Scan(&id, &fp)
+		ids = append(ids, id)
+		paths = append(paths, fp)
+	}
+
+	if len(ids) == 0 {
+		return 0
+	}
+
+	// Delete from DB
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	q := "DELETE FROM recordings WHERE id IN (" + strings.Join(placeholders, ",") + ")"
+	s.db.Exec(q, args...)
+
+	// Delete files (best-effort)
+	for _, fp := range paths {
+		if fp != "" {
+			os.Remove(fp)
+		}
+	}
+
+	log.Printf("[storage] cleaned %d old recordings (retention: %d days)", len(ids), rc.RetentionDays)
+	return len(ids)
+}
+
+// DeleteRecording removes a single recording from DB and filesystem.
+func (s *Store) DeleteRecording(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var fp string
+	s.db.QueryRow("SELECT file_path FROM recordings WHERE id=?", id).Scan(&fp)
+	s.db.Exec("DELETE FROM recordings WHERE id=?", id)
+	if fp != "" {
+		os.Remove(fp)
+	}
+}
+
+// DiskUsage returns total, used, free bytes for the data directory.
+// Also returns the videos directory size (approximate via Statfs on same FS).
+type DiskStats struct {
+	TotalBytes     int64   `json:"total_bytes"`
+	UsedBytes      int64   `json:"used_bytes"`
+	FreeBytes      int64   `json:"free_bytes"`
+	UsedPercent    float64 `json:"used_percent"`
+	RecordingCount int     `json:"recording_count"`
+	RecordingBytes int64   `json:"recording_bytes"`
+}
+
+func (s *Store) GetDiskStats() *DiskStats {
+	ds := &DiskStats{}
+
+	// Statfs on data directory
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(s.dataDir, &stat); err == nil {
+		ds.TotalBytes = int64(stat.Blocks) * stat.Bsize
+		ds.FreeBytes = int64(stat.Bfree) * stat.Bsize
+		ds.UsedBytes = ds.TotalBytes - ds.FreeBytes
+		if ds.TotalBytes > 0 {
+			ds.UsedPercent = float64(ds.UsedBytes) / float64(ds.TotalBytes) * 100.0
+		}
+	}
+
+	// Count recordings and sum file sizes
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	rows, err := s.db.Query("SELECT COUNT(*), IFNULL(SUM(file_size),0) FROM recordings")
+	if err == nil {
+		defer rows.Close()
+		if rows.Next() {
+			rows.Scan(&ds.RecordingCount, &ds.RecordingBytes)
+		}
+	}
+	return ds
 }
