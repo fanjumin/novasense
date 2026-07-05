@@ -18,3 +18,5 @@ build/
 data/
 videos/
 snapshots/
+backend/video-stream-manager
+video-stream-manager

@@ -1277,7 +1277,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	s.json(w, map[string]interface{}{
 		"status":           "running",
-		"version":          "0.8.1",
+		"version":          "0.8.2",
 		"devices":          devices,
 		"online_devices":   onlineCount,
 		"recordings":       recordings,
@@ -1298,7 +1298,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	s.json(w, map[string]interface{}{
 		"status":           "ok",
-		"version":          "0.8.1",
+		"version":          "0.8.2",
 		"uptime":           time.Since(startTime).String(),
 		"devices_total":    devices,
 		"devices_online":   onlineCount,
@@ -2801,7 +2801,7 @@ func (s *Server) doHeartbeat() {
 	url := strings.TrimRight(s.vpsPluginURL, "/") + "/api/client/subscription/check"
 	body := map[string]string{
 		"device_id": getHostname(),
-		"version":   "0.8.1",
+		"version":   "0.8.2",
 	}
 	payload, _ := json.Marshal(body)
 	req, err := http.NewRequest("POST", url, bytes.NewReader(payload))
@@ -2921,7 +2921,7 @@ func main() {
 	server := NewServer(store, dataDir)
 
 	addr := ":8899"
-	log.Printf("=== 视频流管理平台 v0.8.1 ===")
+	log.Printf("=== 视频流管理平台 v0.8.2 ===")
 	log.Printf("API 服务: http://0.0.0.0%s", addr)
 	log.Printf("打开浏览器访问 http://localhost%s", addr)
 	if err := http.ListenAndServe(addr, server); err != nil {
