@@ -802,6 +802,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/face-events", s.handleFaceEvents)
 	s.mux.HandleFunc("/api/face-events/", s.handleFaceEventsByMotion)
 	s.mux.HandleFunc("/api/v4l2/", s.handleV4L2)
+	s.mux.HandleFunc("/api/phone/", s.handlePhoneAPI)
 	// HLS proxy: /hls/live/* → :8888/live/*
 	// Uses http.Client that follows 302 internally, so MediaMTX returns session in URL.
 	// Browser gets playlist with ?session=xxx URLs — no cookie needed for sub-requests.
@@ -900,6 +901,69 @@ func (s *Server) handleV4L2(w http.ResponseWriter, r *http.Request) {
 	default:
 		s.error(w, "method not allowed", 405)
 	}
+}
+
+func (s *Server) handlePhoneAPI(w http.ResponseWriter, r *http.Request) {
+	// /api/phone/{deviceId}/{command}
+	path := strings.TrimPrefix(r.URL.Path, "/api/phone/")
+	path = strings.TrimRight(path, "/")
+	parts := strings.SplitN(path, "/", 2)
+	if len(parts) < 2 {
+		s.error(w, "need deviceId/command", 400)
+		return
+	}
+	deviceID := parts[0]
+	command := parts[1]
+
+	device := s.store.GetDevice(deviceID)
+	if device == nil {
+		s.error(w, "device not found", 404)
+		return
+	}
+
+	// Extract phone base URL from device URL (e.g. http://192.0.2.104:8080/video → http://192.0.2.104:8080)
+	phoneURL := ""
+	if strings.HasPrefix(device.URL, "http://") || strings.HasPrefix(device.URL, "https://") {
+		parts := strings.Split(device.URL, "/")
+		phoneURL = parts[0] + "//" + parts[2]
+	}
+
+	if phoneURL == "" {
+		s.error(w, "not a HTTP device", 400)
+		return
+	}
+
+	targetURL := phoneURL + "/api/" + command
+	if r.URL.RawQuery != "" {
+		targetURL += "?" + r.URL.RawQuery
+	}
+
+	req, err := http.NewRequest(r.Method, targetURL, r.Body)
+	if err != nil {
+		s.error(w, err.Error(), 500)
+		return
+	}
+	req.Header.Set("Content-Type", r.Header.Get("Content-Type"))
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		s.error(w, "phone unreachable: "+err.Error(), 502)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		s.error(w, err.Error(), 502)
+		return
+	}
+	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
+	w.WriteHeader(resp.StatusCode)
+	w.Write(body)
 }
 
 func listV4L2Controls(devPath string) ([]map[string]interface{}, error) {
