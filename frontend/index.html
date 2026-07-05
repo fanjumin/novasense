@@ -543,6 +543,7 @@ async function renderLive() {
           <button class="btn btn-sm btn-outline" id="lvVol-${d.id}" onclick="toggleMute('${d.id}')" style="display:${w?'':'none'}">🔇</button>
           <button class="btn btn-sm btn-outline" id="lvTalk-${d.id}" onmousedown="talkStart('${d.id}')" onmouseup="talkStop('${d.id}')" onmouseleave="talkStop('${d.id}')" style="display:${w?'':'none'};color:#40c4ff" title="按住说话">🎤</button>
           <button class="btn btn-sm btn-outline" id="lvFull-${d.id}" onclick="fullscreenVid('${d.id}')" style="display:${w?'':'none'}">⛶</button>
+          ${d.protocol==='usb'?'<button class="btn btn-sm btn-outline" onclick="showV4L2(\''+d.id+'\')" style="color:#8aa0b8" title="摄像头参数">⚙️</button>':''}
           <button class="btn btn-sm ${w?'btn-danger':'btn-success'}" id="lvBtn-${d.id}"
             onclick="toggleLive('${d.id}')">${w?'停止':'观看'}</button>
           <button class="btn btn-sm btn-outline" onclick="delCam('${d.id}')">✕</button>
@@ -1803,6 +1804,52 @@ async function importSelected() {
     statusEl.textContent = '';
   }
 }
+
+// ===== V4L2 Camera Controls =====
+function showV4L2(id) {
+  var v4l2Id = 'v4l2-panel-'+id;
+  var existing = document.getElementById(v4l2Id);
+  if (existing) { existing.style.display = existing.style.display==='none'?'block':'none'; return; }
+
+  var panel = document.createElement('div');
+  panel.id = v4l2Id;
+  panel.style.cssText = 'position:fixed;top:60px;right:20px;width:320px;max-height:80vh;overflow-y:auto;background:#0d151f;border:1px solid #1e2d3d;border-radius:8px;padding:16px;z-index:1000;box-shadow:0 4px 20px rgba(0,0,0,0.5);';
+  panel.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><b>摄像头参数</b><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:#6b8299;cursor:pointer;font-size:16px">✕</button></div><div style="color:#6b8299;font-size:12px" id="v4l2-loading-'+id+'">加载中...</div><div id="v4l2-ctrls-'+id+'"></div>';
+  document.body.appendChild(panel);
+
+  api('/api/v4l2/'+id).then(function(data) {
+    var el = document.getElementById('v4l2-ctrls-'+id);
+    var loading = document.getElementById('v4l2-loading-'+id);
+    if (!el) return;
+    loading.style.display = 'none';
+    if (!data || !data.controls) { el.innerHTML = '<div style="color:#ef9a9a">获取参数失败</div>'; return; }
+    el.innerHTML = data.controls.map(function(c) {
+      var isBool = c.min===0 && c.max===1 && c.step===1;
+      if (isBool) {
+        return '<div style="margin:6px 0;display:flex;justify-content:space-between;align-items:center">'+
+          '<span style="font-size:13px;color:#8aa0b8">'+c.name+'</span>'+
+          '<label style="position:relative;width:44px;height:22px"><input type="checkbox" '+(c.value?'checked':'')+
+            ' onchange="setV4L2(\''+id+'\',\''+c.name+'\',this.checked?1:0)" style="opacity:0;width:0;height:0">'+
+            '<span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:'+(c.value?'#00c8ff':'#1a2a3a')+';border-radius:11px;transition:.3s"></span>'+
+          '</label></div>';
+      }
+      return '<div style="margin:8px 0">'+
+        '<div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:#8aa0b8">'+c.name+'</span><span style="color:#00c8ff" id="v4l2-val-'+id+'-'+c.name+'">'+c.value+'</span></div>'+
+        '<input type="range" min="'+c.min+'" max="'+c.max+'" step="'+c.step+'" value="'+c.value+'" '+
+          'oninput="document.getElementById(\'v4l2-val-'+id+'-'+c.name+'\').textContent=this.value" '+
+          'onchange="setV4L2(\''+id+'\',\''+c.name+'\',this.value)" '+
+          'style="width:100%;height:4px;background:#1a2a3a;outline:none;-webkit-appearance:none;border-radius:2px">'+
+      '</div>';
+    }).join('');
+  }).catch(function(e) { var el = document.getElementById('v4l2-loading-'+id); if(el) el.textContent='加载失败: '+e.message; });
+}
+
+function setV4L2(id, control, value) {
+  api('/api/v4l2/'+id, {method:'PUT', body:{control:control, value:value}}).then(function(r) {
+    if (r.status==='ok') toast(control+' = '+value);
+  }).catch(function(e) { toast('设置失败','e'); });
+}
+
 </script>
 </body>
 </html>
