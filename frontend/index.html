@@ -1351,7 +1351,16 @@ async function changeRes(id, res) {
       if (window['webrtc_'+id]) { window['webrtc_'+id].close(); delete window['webrtc_'+id]; }
       var vid2 = document.getElementById('lvVid-'+id);
       if (vid2) {
-        // Start HLS immediately
+        // Wait for stream to be ready after resolution change
+        await new Promise(function(r) {
+          var timeout = 0;
+          var check = function() {
+            fetch(MTX_HLS+'/live/'+id+'/index.m3u8', {credentials:'include'}).then(function(resp){
+              if (resp.ok) r(); else { timeout++; if(timeout>30)r(); else setTimeout(check,500); }
+            }).catch(function(){ timeout++; if(timeout>30)r(); else setTimeout(check,500); });
+          };
+          check();
+        });
         var h2 = new Hls({
           xhrSetup: function(x, u) { x.withCredentials = true; }
         });
