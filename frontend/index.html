@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script defer src="http://192.0.2.107:8888/live/2e415945/hls.min.js"></script>
+<script defer src="/hls.min.js"></script>
 <title>视频流管理平台</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -170,7 +170,7 @@ a { color:#00c8ff; text-decoration:none; }
     <button class="btn btn-sm btn-outline" onclick="setLayout(3)">■■■</button>
     <button class="btn btn-sm btn-outline" onclick="setLayout(4)">■■■■</button>
     <button class="btn btn-sm btn-outline" onclick="openAddForm()">+ 添加</button>
-    <button class="btn btn-sm btn-outline" onclick="discoverDevices()">📡 扫描</button>
+    <button class="btn btn-sm btn-outline" onclick="startScan()">📡 扫描</button>
     <select id="groupFilter" style="background:#0d151f;border:1px solid #1a2a3a;color:#d0d8e0;padding:3px 6px;border-radius:4px;font-size:12px" onchange="renderLive()">
       <option value="">🏷️ 全部</option>
     </select>
@@ -455,7 +455,7 @@ a { color:#00c8ff; text-decoration:none; }
 
 <script>
 const API = '';
-const MTX_HLS = 'http://192.0.2.107:8888';
+const MTX_HLS = '/hls';
 let proxyStatus = {};
 
 function toast(m,t='s') { const e=document.createElement('div'); e.className=`toast toast-${t}`; e.textContent=m; document.body.appendChild(e); setTimeout(()=>e.remove(),2500); }
@@ -588,18 +588,16 @@ async function renderLive() {
     if (proxyStatus[d.id]) {
       const v = document.getElementById(`lvVid-${d.id}`);
       if (v) {
-        fetch(MTX_HLS+'/live/'+d.id+'/index.m3u8', {credentials: 'include'}).catch(function(){});
-        startWebRTC(v, d.id).then(function(ok) {
-          if (!ok) {
-            var h = new Hls({
-              xhrSetup: function(x, u) { x.withCredentials = true; }
-            });
-            h.loadSource(MTX_HLS+'/live/'+d.id+'/index.m3u8');
-            h.attachMedia(v);
-            h.on(Hls.Events.MANIFEST_PARSED, function() { v.play().catch(function(){}); });
-            window['hls_'+d.id] = h;
-          }
+        // Start HLS immediately
+        var h = new Hls({
+          xhrSetup: function(x, u) { x.withCredentials = true; }
         });
+        h.loadSource(MTX_HLS+'/live/'+d.id+'/index.m3u8');
+        h.attachMedia(v);
+        h.on(Hls.Events.MANIFEST_PARSED, function() { v.play().catch(function(){}); });
+        window['hls_'+d.id] = h;
+        // Async WebRTC attempt
+        startWebRTC(v, d.id).catch(function(){});
       }
       const ptz = document.getElementById('lvPtz-'+d.id);
       if (ptz) ptz.style.display='flex';
@@ -632,37 +630,17 @@ async function toggleLive(id) {
       document.getElementById('lvTalk-'+id).style.display='';
       // Pre-fetch to set MediaMTX cookie
       fetch(MTX_HLS+'/live/'+id+'/index.m3u8', {credentials: 'include'}).catch(function(){});
-      // Try WebRTC first (lower latency), fall back to HLS
-      var protoBadge = document.getElementById('lvProto-'+id) || (function(){
-        var b = document.createElement('span');
-        b.id = 'lvProto-'+id;
-        b.style.cssText = 'position:absolute;top:32px;right:6px;font-size:9px;padding:1px 4px;border-radius:3px;z-index:3';
-        var c = document.getElementById('lvBtn-'+id).closest('.live-card');
-        if (c) c.appendChild(b);
-        return b;
-      })();
-      startWebRTC(vid, id).then(function(ok) {
-        if (ok) {
-          protoBadge.textContent = 'WebRTC';
-          protoBadge.style.background = '#0d3b2a';
-          protoBadge.style.color = '#69f0ae';
-        } else {
-          protoBadge.textContent = 'HLS';
-          protoBadge.style.background = '#3a2a1a';
-          protoBadge.style.color = '#ffcc80';
-          var hls = new Hls({
-            xhrSetup: function(xhr, url) {
-              xhr.withCredentials = true;
-            }
-          });
-          hls.loadSource(MTX_HLS+'/live/'+id+'/index.m3u8');
-          hls.attachMedia(vid);
-          hls.on(Hls.Events.MANIFEST_PARSED, function() {
-            vid.play().catch(function(){});
-          });
-          window['hls_'+id] = hls;
-        }
+      // Start HLS immediately (don't wait for WebRTC)
+      var hls = new Hls({
+        xhrSetup: function(xhr, url) { xhr.withCredentials = true; }
       });
+      hls.loadSource(MTX_HLS+'/live/'+id+'/index.m3u8');
+      hls.attachMedia(vid);
+      vid.play().catch(function(){});
+      hls.on(Hls.Events.MANIFEST_PARSED, function(){});
+      window['hls_'+id] = hls;
+      // Async WebRTC attempt: if succeeds, keep it alongside HLS
+      startWebRTC(vid, id).catch(function(){});
     } else {
       btn.textContent='观看'; btn.className='btn btn-sm btn-success';
       toast(r.error||'失败','e');
@@ -690,7 +668,7 @@ async function toggleLive(id) {
 
 // ===== WebRTC Playback (WHEP via MediaMTX) =====
 async function startWebRTC(videoEl, streamId) {
-  var mtxHost = MTX_HLS.replace(/^https?:\/\//,'').replace(/:\d+$/, '');
+  var mtxHost = '192.0.2.107';
   var whepURL = 'http://' + mtxHost + ':8889/live/' + streamId + '/whep';
   try {
     var pc = new RTCPeerConnection({
@@ -1062,7 +1040,7 @@ function closeById(id){document.getElementById(id).style.display='none';}
 function closeIfBg(e,id){if(e.target===e.currentTarget)document.getElementById(id).style.display='none';}
 
 setInterval(loadStatus,10000);
-setInterval(()=>{if(document.getElementById('tab-live').classList.contains('active'))renderLive();},15000);
+// NO periodic renderLive — it destroys video DOM elements
 
 // ===== SSE Event Stream =====
 (function() {
@@ -1373,17 +1351,16 @@ async function changeRes(id, res) {
       if (window['webrtc_'+id]) { window['webrtc_'+id].close(); delete window['webrtc_'+id]; }
       var vid2 = document.getElementById('lvVid-'+id);
       if (vid2) {
-        startWebRTC(vid2, id).then(function(ok) {
-          if (!ok) {
-            var h2 = new Hls({
-              xhrSetup: function(x, u) { x.withCredentials = true; }
-            });
-            h2.loadSource(MTX_HLS+'/live/'+id+'/index.m3u8');
-            h2.attachMedia(vid2);
-            h2.on(Hls.Events.MANIFEST_PARSED, function() { vid2.play().catch(function(){}); });
-            window['hls_'+id] = h2;
-          }
+        // Start HLS immediately
+        var h2 = new Hls({
+          xhrSetup: function(x, u) { x.withCredentials = true; }
         });
+        h2.loadSource(MTX_HLS+'/live/'+id+'/index.m3u8');
+        h2.attachMedia(vid2);
+        h2.on(Hls.Events.MANIFEST_PARSED, function() { vid2.play().catch(function(){}); });
+        window['hls_'+id] = h2;
+        // Async WebRTC attempt
+        startWebRTC(vid2, id).catch(function(){});
       }
     }
   } else {

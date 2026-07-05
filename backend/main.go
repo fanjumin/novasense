@@ -13,10 +13,12 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/http/cookiejar"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -86,6 +88,7 @@ var publicPaths = []string{
 	"/api/health",
 	"/api/license/check",
 	"/api/events",
+	"/hls",
 	"/ui/login.html",
 	"/NetCamPro.apk",
 }
@@ -113,6 +116,7 @@ type FFmpegManager struct {
 	stopCh     chan struct{}
 	proxyCfgs  map[string]ProxyConfig // per-device proxy config
 	wapaBin    string                  // path to wapa-pull helper binary
+	healthFails map[string]int        // consecutive health check failures
 }
 
 type FFmpegProc struct {
@@ -134,6 +138,7 @@ func NewFFmpegManager(store *Store, dataDir string) *FFmpegManager {
 		stopCh:     make(chan struct{}),
 		proxyCfgs:  make(map[string]ProxyConfig),
 		wapaBin:    filepath.Join(filepath.Dir(os.Args[0]), "..", "bin", "wapa-pull"),
+		healthFails: make(map[string]int),
 	}
 	go m.healthCheckLoop()
 	return m
@@ -184,45 +189,51 @@ func (m *FFmpegManager) detectResolution(deviceID string) ProxyConfig {
 		}
 	}
 
-	// Quick ffprobe to detect native resolution
-	args := []string{"-v", "quiet", "-print_format", "json", "-show_streams", "-select_streams", "v:0"}
+	// Quick ffprobe to detect native resolution with 3s hard timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	args := []string{
+		"-rtsp_transport", "tcp",
+		"-stimeout", "2000000",
+		"-v", "error",
+		"-select_streams", "v:0",
+		"-show_entries", "stream=width,height",
+		"-of", "csv=p=0",
+	}
+	// For HTTP MJPEG, force input format before other args
 	if strings.HasPrefix(device.URL, "http://") || strings.HasPrefix(device.URL, "https://") {
 		args = append([]string{"-f", "mjpeg"}, args...)
 	}
 	args = append(args, device.URL)
 
-	cmd := exec.Command("ffprobe", args...)
+	cmd := exec.CommandContext(ctx, "ffprobe", args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
-	// Timeout after 5s to avoid hanging on unresponsive streams
-	done := make(chan struct{})
-	var out []byte
-	var err error
-	go func() {
-		out, err = cmd.Output()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		cmd.Process.Kill()
-		return ProxyConfig{}
-	}
-	if err != nil {
-		return ProxyConfig{}
+	if err := cmd.Run(); err != nil {
+		log.Printf("[proxy] ffprobe探测失败或超时(ID=%s err=%v stderr=%s) 使用默认分辨率1920x1080",
+			shortID(deviceID), err, strings.TrimSpace(stderr.String()))
+		return ProxyConfig{Width: 1920, Height: 1080, Bitrate: "4000k"}
 	}
 
-	var result struct {
-		Streams []struct {
-			Width  int `json:"width"`
-			Height int `json:"height"`
-		} `json:"streams"`
-	}
-	if err := json.Unmarshal(out, &result); err != nil || len(result.Streams) == 0 {
-		return ProxyConfig{}
+	// Parse "1920,1080" from csv output
+	out := strings.TrimSpace(stdout.String())
+	parts := strings.Split(out, ",")
+	if len(parts) != 2 {
+		log.Printf("[proxy] ffprobe输出格式异常(ID=%s out=%s) 使用默认分辨率1920x1080",
+			shortID(deviceID), out)
+		return ProxyConfig{Width: 1920, Height: 1080, Bitrate: "4000k"}
 	}
 
-	w := result.Streams[0].Width
-	h := result.Streams[0].Height
+	w, errW := strconv.Atoi(strings.TrimSpace(parts[0]))
+	h, errH := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if errW != nil || errH != nil || w <= 0 || h <= 0 {
+		log.Printf("[proxy] ffprobe解析失败(ID=%s w=%d h=%d) 使用默认分辨率1920x1080",
+			shortID(deviceID), w, h)
+		return ProxyConfig{Width: 1920, Height: 1080, Bitrate: "4000k"}
+	}
 
 	// Choose bitrate based on resolution
 	var br string
@@ -257,11 +268,16 @@ func (m *FFmpegManager) buildProxyArgs(inputURL, rtmpDest string, cfg ProxyConfi
 	}
 
 	args := []string{
-		"-fflags", "nobuffer",
+		"-fflags", "+genpts+nobuffer+flush_packets",
 		"-flags", "low_delay",
 	}
 
-	// WAPA cameras use pipe input from wapa-pull helper
+	// HTTP MJPEG: force input format + wallclock timestamps before -i
+	if strings.HasPrefix(inputURL, "http://") || strings.HasPrefix(inputURL, "https://") {
+		args = append(args, "-f", "mjpeg", "-use_wallclock_as_timestamps", "1")
+	}
+
+	// Input source (handles WAPA pipe vs URL vs device)
 	if strings.HasPrefix(inputURL, "wapa://") {
 		args = append(args, "-f", "m4v", "-err_detect", "ignore_err", "-i", "pipe:0")
 	} else {
@@ -289,18 +305,13 @@ func (m *FFmpegManager) buildProxyArgs(inputURL, rtmpDest string, cfg ProxyConfi
 		rtmpDest,
 	)
 
-	// Add RTSP-specific flags only for RTSP URLs
+	// Add RTSP-specific flags only for RTSP URLs (prepend so order stays correct)
 	if strings.HasPrefix(inputURL, "rtsp://") || strings.HasPrefix(inputURL, "rtsps://") {
 		args = append([]string{"-rtsp_transport", "tcp"}, args...)
 	}
-	// For MJPEG/HTTP, don't force input format; ffmpeg auto-detects
 	// For USB cameras (/dev/video*), add input format
 	if strings.HasPrefix(inputURL, "/dev/video") {
 		args = append([]string{"-f", "v4l2", "-input_format", "mjpeg", "-framerate", "15"}, args...)
-	}
-	// For HTTP MJPEG streams (IP Webcam style), force mjpeg demuxer
-	if strings.HasPrefix(inputURL, "http://") || strings.HasPrefix(inputURL, "https://") {
-		args = append([]string{"-f", "mjpeg"}, args...)
 	}
 
 	return args
@@ -338,6 +349,25 @@ func (m *FFmpegManager) StartLiveProxyWithConfig(deviceID string, cfg ProxyConfi
 	m.sem <- struct{}{}
 
 	inputURL := buildInputURL(device)
+
+	// Kill any orphaned ffmpeg process that may still be holding this device.
+	// This handles the case where a previous backend instance was killed,
+	// leaving behind zombie ffmpeg processes that block device access.
+	if strings.HasPrefix(inputURL, "/dev/video") {
+		// USB camera: use fuser to kill all processes holding the device
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		killCmd := exec.CommandContext(ctx, "fuser", "-k", inputURL)
+		killCmd.CombinedOutput()
+		cancel()
+	} else if strings.HasPrefix(inputURL, "http://") || strings.HasPrefix(inputURL, "https://") {
+		// HTTP/MJPEG camera: search for ffmpeg processes using the same URL and kill them
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		killCmd := exec.CommandContext(ctx, "sh", "-c",
+			fmt.Sprintf("ps aux | grep 'ffmpeg.*-i %s' | grep -v grep | awk '{print $2}' | xargs -r kill -9 2>/dev/null", inputURL))
+		killCmd.CombinedOutput()
+		cancel()
+	}
+
 	rtmpDest := fmt.Sprintf("rtmp://127.0.0.1:1935/live/%s", deviceID)
 
 	// Save config for restart / toggle
@@ -390,6 +420,9 @@ func (m *FFmpegManager) StartLiveProxyWithConfig(deviceID string, cfg ProxyConfi
 	} else {
 		cmd = exec.CommandContext(ctx, "ffmpeg", args...)
 	}
+
+	// Run ffmpeg in its own process group so it survives backend restarts
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
@@ -683,26 +716,41 @@ func (s *Server) error(w http.ResponseWriter, msg string, code int) {
 
 func (s *Server) registerRoutes() {
 	// Serve frontend FIRST (before catch-all "/")
-	frontendDir := s.dataDir + "/../frontend"
-	if abs, err := filepath.Abs(frontendDir); err == nil {
-		if _, err := os.Stat(abs); err == nil {
-			fs := http.FileServer(http.Dir(abs))
-			s.mux.Handle("/ui/", http.StripPrefix("/ui/", fs))
-			s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/" {
-					http.Redirect(w, r, "/ui/login.html", 302)
-					return
-				}
-				fp := filepath.Join(abs, r.URL.Path)
-				if _, err := os.Stat(fp); err == nil {
-					http.ServeFile(w, r, fp)
-					return
-				}
-				s.error(w, "not found", 404)
-			})
-		} else {
-			s.mux.HandleFunc("/", s.handleRoot)
+	// Priority: FRONTEND_DIR env > dataDir/../frontend > ./frontend (CWD)
+	frontendDir := os.Getenv("FRONTEND_DIR")
+	if frontendDir == "" {
+		frontendDir = s.dataDir + "/../frontend"
+	}
+	// Try multiple paths: env path, dataDir-relative, CWD-relative
+	frontendCandidates := []string{frontendDir}
+	if os.Getenv("FRONTEND_DIR") == "" {
+		frontendCandidates = append(frontendCandidates, "./frontend")
+	}
+	var frontendAbs string
+	for _, candidate := range frontendCandidates {
+		if abs, err := filepath.Abs(candidate); err == nil {
+			if fi, err := os.Stat(abs); err == nil && fi.IsDir() {
+				frontendAbs = abs
+				break
+			}
 		}
+	}
+	if frontendAbs != "" {
+		fs := http.FileServer(http.Dir(frontendAbs))
+		s.mux.Handle("/ui/", http.StripPrefix("/ui/", fs))
+		s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/" {
+				http.Redirect(w, r, "/ui/login.html", 302)
+				return
+			}
+			fp := filepath.Join(frontendAbs, r.URL.Path)
+			if _, err := os.Stat(fp); err == nil {
+				http.ServeFile(w, r, fp)
+				return
+			}
+			log.Printf("[catch-all] 404 for %s %s Host=%s", r.Method, r.URL.Path, r.Host)
+			s.error(w, "not found", 404)
+		})
 	} else {
 		s.mux.HandleFunc("/", s.handleRoot)
 	}
@@ -753,6 +801,169 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/faces/", s.handleFaceByID)
 	s.mux.HandleFunc("/api/face-events", s.handleFaceEvents)
 	s.mux.HandleFunc("/api/face-events/", s.handleFaceEventsByMotion)
+	s.mux.HandleFunc("/api/v4l2/", s.handleV4L2)
+	// HLS proxy: /hls/live/* → :8888/live/*
+	// Uses http.Client that follows 302 internally, so MediaMTX returns session in URL.
+	// Browser gets playlist with ?session=xxx URLs — no cookie needed for sub-requests.
+	s.mux.Handle("/hls/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("[hls-proxy] RECEIVED %s %s Host=%s", r.Method, r.URL.Path, r.Host)
+		target := "http://127.0.0.1:8888" + strings.TrimPrefix(r.URL.Path, "/hls")
+		if r.URL.RawQuery != "" {
+			target += "?" + r.URL.RawQuery
+		}
+
+		jar, _ := cookiejar.New(nil)
+		client := &http.Client{Jar: jar}
+		req, _ := http.NewRequest(r.Method, target, nil)
+		req.Host = "127.0.0.1:8888"
+		for k, v := range r.Header {
+			for _, hv := range v {
+				if k == "Cookie" || k == "Set-Cookie" { continue }
+				req.Header.Add(k, hv)
+			}
+		}
+
+		resp, err := client.Do(req)
+		if err != nil { http.Error(w, err.Error(), 502); return }
+		defer resp.Body.Close()
+
+		log.Printf("[hls-proxy] %s %s -> %d (%s)", r.Method, r.URL.Path, resp.StatusCode, resp.Header.Get("Content-Type"))
+
+		// Strip Secure from Set-Cookie
+		for k, v := range resp.Header {
+			for _, hv := range v {
+				if k == "Set-Cookie" {
+					hv = strings.ReplaceAll(hv, "; Secure", "")
+					hv = strings.ReplaceAll(hv, "SameSite=None", "SameSite=Lax")
+				}
+				w.Header().Add(k, hv)
+			}
+		}
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(resp.StatusCode)
+		io.Copy(w, resp.Body)
+	}))
+}
+
+// ============ V4L2 Camera Controls ============
+
+func (s *Server) handleV4L2(w http.ResponseWriter, r *http.Request) {
+	deviceID := strings.TrimPrefix(r.URL.Path, "/api/v4l2/")
+	deviceID = strings.TrimRight(deviceID, "/")
+
+	device := s.store.GetDevice(deviceID)
+	if device == nil {
+		s.error(w, "device not found", 404)
+		return
+	}
+	if device.Protocol != "usb" {
+		s.error(w, "not a USB device", 400)
+		return
+	}
+	devPath := device.URL
+
+	switch r.Method {
+	case "GET":
+		controls, err := listV4L2Controls(devPath)
+		if err != nil {
+			s.error(w, err.Error(), 500)
+			return
+		}
+		s.json(w, map[string]interface{}{
+			"device":   devPath,
+			"controls": controls,
+		})
+	case "PUT":
+		var req struct {
+			Control string      `json:"control"`
+			Value   interface{} `json:"value"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.error(w, "invalid JSON: "+err.Error(), 400)
+			return
+		}
+		valStr := fmt.Sprint(req.Value)
+		// Convert bool to 0/1 for v4l2-ctl
+		switch v := req.Value.(type) {
+		case bool:
+			if v {
+				valStr = "1"
+			} else {
+				valStr = "0"
+			}
+		}
+		if err := setV4L2Control(devPath, req.Control, valStr); err != nil {
+			s.error(w, err.Error(), 500)
+			return
+		}
+		s.json(w, map[string]string{"status": "ok"})
+	default:
+		s.error(w, "method not allowed", 405)
+	}
+}
+
+func listV4L2Controls(devPath string) ([]map[string]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "v4l2-ctl", "-d", devPath, "--list-ctrls")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("v4l2-ctl failed: %v", err)
+	}
+
+	var controls []map[string]interface{}
+	lineRe := regexp.MustCompile(`^\s+(\S+)\s+0x[0-9a-f]+\s+\((\w+)\)\s*:\s*(.+)$`)
+
+	for _, line := range strings.Split(string(out), "\n") {
+		m := lineRe.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		ctrl := map[string]interface{}{
+			"name": m[1],
+			"type": m[2],
+		}
+		props := m[3]
+
+		pairRe := regexp.MustCompile(`(\w+)=(-?[\w.]+)`)
+		for _, pair := range pairRe.FindAllStringSubmatch(props, -1) {
+			switch pair[1] {
+			case "min", "max", "step", "default":
+				if v, err := strconv.Atoi(pair[2]); err == nil {
+					ctrl[pair[1]] = v
+				}
+			case "value":
+				if v, err := strconv.Atoi(pair[2]); err == nil {
+					ctrl[pair[1]] = v
+				} else {
+					ctrl[pair[1]] = pair[2]
+				}
+			case "flags":
+				ctrl["flags"] = pair[2]
+			}
+		}
+
+		controls = append(controls, ctrl)
+	}
+
+	if len(controls) == 0 {
+		return nil, fmt.Errorf("no controls found for %s", devPath)
+	}
+	return controls, nil
+}
+
+func setV4L2Control(devPath, control, value string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "v4l2-ctl", "-d", devPath,
+		"--set-ctrl", fmt.Sprintf("%s=%s", control, value))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("v4l2-ctl set failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
@@ -1303,17 +1514,60 @@ func (m *FFmpegManager) healthCheckLoop() {
 
 func (m *FFmpegManager) runHealthCheck() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	now := time.Now()
+	var hungIDs []string
 	for id, p := range m.proxies {
 		if !p.Running || p.Cmd == nil || p.Cmd.Process == nil || p.Cmd.ProcessState != nil {
+			m.healthFails[id] = 0
 			continue
 		}
-		if now.Sub(p.started) > 30*time.Minute {
-			log.Printf("[health] proxy %s running for %.0f min", id[:8], now.Sub(p.started).Minutes())
+		if !m.streamAlive(id) {
+			m.healthFails[id]++
+			if m.healthFails[id] >= 5 {
+				log.Printf("[health] proxy %s dead for %d checks — killing hung process", shortID(id), m.healthFails[id])
+				hungIDs = append(hungIDs, id)
+				m.healthFails[id] = 0
+			}
+		} else {
+			m.healthFails[id] = 0
 		}
 	}
+	m.mu.Unlock()
+
+	for _, id := range hungIDs {
+		m.mu.Lock()
+		if p, ok := m.proxies[id]; ok && p.Running && p.Cmd != nil && p.Cmd.Process != nil {
+			p.cancel()
+		}
+		m.mu.Unlock()
+	}
+}
+
+func (m *FFmpegManager) streamAlive(deviceID string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	url := fmt.Sprintf("http://127.0.0.1:8888/live/%s/index.m3u8", deviceID)
+	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req.Host = "127.0.0.1:8888"
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	// MediaMTX returns 200 with playlist when stream is available,
+	// or error JSON (possibly 404/200) when not available.
+	// Check response body for error marker.
+	if resp.StatusCode != 200 {
+		return false
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 256))
+	if err != nil {
+		return false
+	}
+	return !strings.Contains(string(body), `"error"`)
 }
 
 func (m *FFmpegManager) CollectMetrics() map[string]interface{} {
