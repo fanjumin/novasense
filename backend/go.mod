@@ -1,4 +1,4 @@
-module video-stream-manager
+module novasense-gateway
 
 go 1.25.0
 

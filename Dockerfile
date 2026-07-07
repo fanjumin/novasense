@@ -1,5 +1,5 @@
 # =============================================
-# Dockerfile — video-stream-manager v0.8.3
+# Dockerfile — NovaSense 网关 v0.1.0
 # =============================================
 # Builds: Go backend + ffmpeg + wapa-pull
 # MediaMTX runs as a separate container (see docker-compose.yml)

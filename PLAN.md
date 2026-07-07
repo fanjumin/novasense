@@ -1,51 +1,60 @@
-# V4L2 摄像头控制 API 方案
+# VSM → easykai.cn 集成方案
 
-## 目标
-为 USB 摄像头（V4L2 设备）增加 Web API，让前端能调节亮度、对比度、饱和度等参数。
+## 架构
 
-## 改动范围（单文件）
-
-**`backend/main.go`** — 新增：
-
-### API 路由
-| 方法 | 路径 | 功能 |
-|------|------|------|
-| GET | `/api/v4l2/{device_id}` | 列出该设备所有可用 V4L2 控制项（名称、范围、当前值） |
-| PUT | `/api/v4l2/{device_id}` | 设置指定控制项的值 |
-
-### 实现方式
-- 通过 `v4l2-ctl -d <dev> --list-ctrls` 获取控制列表（解析输出）
-- 通过 `v4l2-ctl -d <dev> --set-ctrl <name>=<value>` 设置值
-- 从 `Device.URL` 获取 `/dev/video*` 路径
-- 只对 `protocol=="usb"` 的设备生效，其他返回 400
-
-### PUT 请求体
-```json
-{
-  "control": "brightness",
-  "value": 10
-}
+```
+用户浏览器/APP
+    │
+    ▼
+easykai.cn (VPS 100.124.0.103, Flask :8081)
+    │  JWT 认证
+    │  ┌─────────────────┐
+    │  │ plugin/vsm/*     │  ← Python 插件
+    │  │ - 设备列表/管理   │
+    │  │ - 直播画面嵌入    │
+    │  │ - 远程控制API     │
+    │  └──────┬──────────┘
+    │         │ HTTP 代理
+    ▼         ▼
+本地 VSM (192.0.2.107:8899)
+    │  Go backend
+    ├── FFmpeg 代理
+    ├── MediaMTX (HLS)
+    └── SQLite 设备库
 ```
 
-### 返回示例（GET）
-```json
-{
-  "device": "/dev/video0",
-  "controls": [
-    {"name": "brightness", "type": "int", "min": -64, "max": 64, "step": 1, "default": 0, "value": 0},
-    {"name": "white_balance_automatic", "type": "bool", "default": true, "value": true},
-    ...
-  ]
-}
-```
+## 步骤
 
-## 验证
-```bash
-# 列出 USB 摄像头控制项
-curl http://localhost:8899/api/v4l2/51097157
+### 1. VSM 插件（Python）
 
-# 设置亮度
-curl -X PUT http://localhost:8899/api/v4l2/51097157 \
-  -H "Content-Type: application/json" \
-  -d '{"control":"brightness","value":20}'
-```
+放在 easykai.cn 的 `plugins/video_stream_manager/` 下：
+
+- `plugin.json` — 元数据声明
+- `__init__.py` — `VSMPlugin(BasePlugin)` 插件类
+- `routes.py` — Flask Blueprint，代理 VSM API + 嵌入直播页面
+- `templates/` — 管理界面 HTML（设备管理、直播看板）
+- `i18n/zh-CN.yml` — 中文翻译
+- `i18n/en.yml` — 英文翻译
+
+插件注册路由 `/plugin/vsm/`，通过 HTTP 调本地 VSM API：
+- `GET /plugin/vsm/devices` → `http://127.0.0.1:8899/api/devices`
+- `POST /plugin/vms/proxy/start/<id>` → 启动代理
+- `POST /plugin/vsm/settings/<id>` → 远程设置（转发到手机 HTTP API）
+
+页面用 hls.js 播放 HLS 流。
+
+### 2. 远程 APP（PWA）
+
+写一个可安装的 PWA，放在 easykai.cn 的插件静态目录下：
+- `manifest.json` — 安装配置（图标、名称）
+- `sw.js` — Service Worker（离线缓存）
+- `index.html` — 全屏摄像头网格 + 设备管理入口
+
+APP 通过 easykai.cn 的 JWT Token 认证，插件代理到本地 VSM。
+
+## 依赖
+
+- easykai.cn 的 `plugins/base.py` 插件框架
+- hls.js（浏览器 HLS 播放）
+- VSM 运行在本地 8899 端口
+- easykai.cn 需要能访问到本地 VSM
