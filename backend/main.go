@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -307,6 +308,7 @@ func (m *FFmpegManager) buildProxyArgs(inputURL, rtmpDest string, cfg ProxyConfi
 
 	// Add RTSP-specific flags only for RTSP URLs (prepend so order stays correct)
 	if strings.HasPrefix(inputURL, "rtsp://") || strings.HasPrefix(inputURL, "rtsps://") {
+		// TCP transport for reliability through firewalls.
 		args = append([]string{"-rtsp_transport", "tcp"}, args...)
 	}
 	// For USB cameras (/dev/video*), add input format
@@ -938,18 +940,8 @@ func (s *Server) handlePhoneAPI(w http.ResponseWriter, r *http.Request) {
 		targetURL += "?" + r.URL.RawQuery
 	}
 
-	req, err := http.NewRequest(r.Method, targetURL, r.Body)
-	if err != nil {
-		s.error(w, err.Error(), 500)
-		return
-	}
-	req.Header.Set("Content-Type", r.Header.Get("Content-Type"))
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	req = req.WithContext(ctx)
-
-	resp, err := http.DefaultClient.Do(req)
+	// Use raw HTTP over TCP to avoid Go's http.Client compatibility issues with NanoHTTPD
+	resp, err := rawHTTPRequest(r.Method, targetURL)
 	if err != nil {
 		s.error(w, "phone unreachable: "+err.Error(), 502)
 		return
@@ -964,6 +956,58 @@ func (s *Server) handlePhoneAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	w.WriteHeader(resp.StatusCode)
 	w.Write(body)
+}
+
+func rawHTTPRequest(method, urlStr string) (*http.Response, error) {
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return nil, err
+	}
+	host := u.Host
+	if u.Port() == "" {
+		if u.Scheme == "https" { host += ":443" } else { host += ":80" }
+	}
+	conn, err := net.DialTimeout("tcp", host, 5*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(5 * time.Second))
+
+	path := u.Path
+	if u.RawQuery != "" {
+		path += "?" + u.RawQuery
+	}
+	reqStr := method + " " + path + " HTTP/1.0\r\nHost: " + u.Host + "\r\nConnection: close\r\nAccept: */*\r\n\r\n"
+	if _, err := conn.Write([]byte(reqStr)); err != nil {
+		return nil, err
+	}
+
+	// Read raw response
+	raw, err := io.ReadAll(conn)
+	if err != nil {
+		return nil, fmt.Errorf("read failed: %v", err)
+	}
+	// Parse manually
+	parts := bytes.SplitN(raw, []byte("\r\n\r\n"), 2)
+	headerLines := bytes.Split(parts[0], []byte("\r\n"))
+	statusLine := string(headerLines[0])
+	statusParts := strings.SplitN(statusLine, " ", 3)
+	statusCode := 200
+	if len(statusParts) >= 2 {
+		statusCode, _ = strconv.Atoi(statusParts[1])
+	}
+	body := []byte{}
+	if len(parts) > 1 {
+		body = parts[1]
+	}
+	return &http.Response{
+		Status:     statusLine,
+		StatusCode: statusCode,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(bytes.NewReader(body)),
+		ContentLength: int64(len(body)),
+	}, nil
 }
 
 func listV4L2Controls(devPath string) ([]map[string]interface{}, error) {
@@ -1578,7 +1622,6 @@ func (m *FFmpegManager) healthCheckLoop() {
 
 func (m *FFmpegManager) runHealthCheck() {
 	m.mu.Lock()
-	var hungIDs []string
 	for id, p := range m.proxies {
 		if !p.Running || p.Cmd == nil || p.Cmd.Process == nil || p.Cmd.ProcessState != nil {
 			m.healthFails[id] = 0
@@ -1587,8 +1630,11 @@ func (m *FFmpegManager) runHealthCheck() {
 		if !m.streamAlive(id) {
 			m.healthFails[id]++
 			if m.healthFails[id] >= 5 {
-				log.Printf("[health] proxy %s dead for %d checks — killing hung process", shortID(id), m.healthFails[id])
-				hungIDs = append(hungIDs, id)
+				log.Printf("[health] proxy %s no stream for %d checks — killing stuck ffmpeg PID %d",
+					shortID(id), m.healthFails[id], p.Cmd.Process.Pid)
+				// Force-kill: process is stuck in CLOSE-WAIT and won't exit on its own.
+				// The ffmpeg exit handler will automatically restart it.
+				p.Cmd.Process.Kill()
 				m.healthFails[id] = 0
 			}
 		} else {
@@ -1596,14 +1642,6 @@ func (m *FFmpegManager) runHealthCheck() {
 		}
 	}
 	m.mu.Unlock()
-
-	for _, id := range hungIDs {
-		m.mu.Lock()
-		if p, ok := m.proxies[id]; ok && p.Running && p.Cmd != nil && p.Cmd.Process != nil {
-			p.cancel()
-		}
-		m.mu.Unlock()
-	}
 }
 
 func (m *FFmpegManager) streamAlive(deviceID string) bool {

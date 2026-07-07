@@ -543,7 +543,7 @@ async function renderLive() {
           <button class="btn btn-sm btn-outline" id="lvVol-${d.id}" onclick="toggleMute('${d.id}')" style="display:${w?'':'none'}">🔇</button>
           <button class="btn btn-sm btn-outline" id="lvTalk-${d.id}" onmousedown="talkStart('${d.id}')" onmouseup="talkStop('${d.id}')" onmouseleave="talkStop('${d.id}')" style="display:${w?'':'none'};color:#40c4ff" title="按住说话">🎤</button>
           <button class="btn btn-sm btn-outline" id="lvFull-${d.id}" onclick="fullscreenVid('${d.id}')" style="display:${w?'':'none'}">⛶</button>
-          ${d.protocol==='usb'?'<button class="btn btn-sm btn-outline" onclick="showV4L2(\''+d.id+'\')" style="color:#8aa0b8" title="摄像头参数">⚙️</button>':d.protocol===''&&d.url&&d.url.startsWith('http')?'<button class="btn btn-sm btn-outline" onclick="showPhoneCam(\''+d.id+'\')" style="color:#8aa0b8" title="手机参数">⚙️</button>':''}
+          ${d.protocol==='usb'?'<button class="btn btn-sm btn-outline" onclick="showV4L2(\''+d.id+'\')" style="color:#8aa0b8" title="摄像头参数">⚙️</button>':(d.protocol===''||d.protocol==='phone')&&d.url&&d.url.startsWith('http')?'<button class="btn btn-sm btn-outline" onclick="showPhoneCam(\''+d.id+'\')" style="color:#8aa0b8" title="手机参数">⚙️</button>':''}
           <button class="btn btn-sm ${w?'btn-danger':'btn-success'}" id="lvBtn-${d.id}"
             onclick="toggleLive('${d.id}')">${w?'停止':'观看'}</button>
           <button class="btn btn-sm btn-outline" onclick="delCam('${d.id}')">✕</button>
@@ -1858,21 +1858,45 @@ function showPhoneCam(id) {
   var panel = document.createElement('div');
   panel.id = pid;
   panel.style.cssText = 'position:fixed;top:60px;right:20px;width:320px;max-height:80vh;overflow-y:auto;background:#0d151f;border:1px solid #1e2d3d;border-radius:8px;padding:16px;z-index:1000;box-shadow:0 4px 20px rgba(0,0,0,0.5);';
-  panel.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><b>手机参数</b><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:#6b8299;cursor:pointer;font-size:16px">✕</button></div><div id="phone-ctrls-'+id+'"></div>';
+  panel.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><b>📱 手机相机设置</b><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:#6b8299;cursor:pointer;font-size:16px">✕</button></div><div id="phone-ctrls-'+id+'"></div>';
   document.body.appendChild(panel);
   var html = '';
-  html += '<div style="margin:8px 0"><button class="btn btn-sm btn-outline" onclick="phoneCmd(\''+id+'\',\'cam_switch\')" style="width:100%;padding:6px">📷 切换摄像头</button></div>';
-  html += '<div style="margin:8px 0"><button class="btn btn-sm btn-outline" onclick="phoneCmd(\''+id+'\',\'torch\')" style="width:100%;padding:6px">🔦 闪光灯</button></div>';
-  html += '<div style="margin:8px 0"><button class="btn btn-sm btn-outline" onclick="phoneCmd(\''+id+'\',\'mirror\')" style="width:100%;padding:6px">🪞 镜像翻转</button></div>';
-  html += '<div style="margin:8px 0"><label style="display:flex;justify-content:space-between;font-size:12px;color:#8aa0b8">变焦 <span id="phone-zoom-'+id+'">1.0x</span></label><input type="range" min="1" max="8" step="0.1" value="1" oninput="document.getElementById(\'phone-zoom-'+id+'\').textContent=this.value+\'x\'" onchange="phoneCmd(\''+id+'\',\'zoom:\'+this.value)" style="width:100%"></div>';
-  html += '<div style="margin:8px 0"><label style="display:flex;justify-content:space-between;font-size:12px;color:#8aa0b8">画质 <span id="phone-quality-'+id+'">80</span></label><input type="range" min="10" max="100" step="5" value="80" oninput="document.getElementById(\'phone-quality-'+id+'\').textContent=this.value" onchange="phoneCmd(\''+id+'\',\'quality:\'+this.value)" style="width:100%"></div>';
-  html += '<div style="margin:8px 0;color:#6b8299;font-size:11px" id="phone-status-'+id+'"></div>';
+  // 切换前后摄像头
+  html += '<div style="margin:6px 0;display:flex;gap:4px">';
+  html += '<button class="btn btn-sm btn-outline" onclick="phoneCmd(\''+id+'\',\'cam_switch?facing=front\')" style="flex:1;padding:6px">📷 前置</button>';
+  html += '<button class="btn btn-sm btn-outline" onclick="phoneCmd(\''+id+'\',\'cam_switch?facing=back\')" style="flex:1;padding:6px">📷 后置</button>';
+  html += '</div>';
+  // 闪光灯 / 镜像（带参数）
+  html += '<div style="margin:6px 0;display:flex;gap:4px">';
+  html += '<button class="btn btn-sm btn-outline" onclick="phoneCmd(\''+id+'\',\'torch?on=true\')" style="flex:1;padding:6px">🔦 开灯</button>';
+  html += '<button class="btn btn-sm btn-outline" onclick="phoneCmd(\''+id+'\',\'torch?on=false\')" style="flex:1;padding:6px">🔦 关灯</button>';
+  html += '<button class="btn btn-sm btn-outline" onclick="phoneCmd(\''+id+'\',\'mirror?enabled=true\')" style="flex:1;padding:6px">🪞 镜像</button>';
+  html += '<button class="btn btn-sm btn-outline" onclick="phoneCmd(\''+id+'\',\'mirror?enabled=false\')" style="flex:1;padding:6px">🪞 原图</button>';
+  html += '</div>';
+  // 分辨率
+  html += '<div style="margin:8px 0"><label style="font-size:12px;color:#8aa0b8">分辨率</label><select onchange="phoneCmd(\''+id+'\',\'resolution?value=\'+this.value)" style="width:100%;background:#0a121a;color:#8aa0b8;border:1px solid #1e2d3d;border-radius:4px;padding:4px;font-size:12px;margin-top:4px">';
+  html += '<option value="640x480">480p (640x480)</option><option value="864x480">480p (864x480)</option><option value="1280x720" selected>720p (1280x720)</option><option value="1920x1080">1080p (1920x1080)</option><option value="3840x2160">4K (3840x2160)</option>';
+  html += '</select></div>';
+  // 帧率
+  html += '<div style="margin:8px 0"><label style="display:flex;justify-content:space-between;font-size:12px;color:#8aa0b8">帧率 <span id="phone-fps-'+id+'">15</span></label><input type="range" min="5" max="30" step="1" value="15" oninput="document.getElementById(\'phone-fps-'+id+'\').textContent=this.value" onchange="phoneCmd(\''+id+'\',\'fps?value=\'+this.value)" style="width:100%"></div>';
+  // 画质
+  html += '<div style="margin:8px 0"><label style="display:flex;justify-content:space-between;font-size:12px;color:#8aa0b8">画质 <span id="phone-quality-'+id+'">80</span></label><input type="range" min="10" max="100" step="5" value="80" oninput="document.getElementById(\'phone-quality-'+id+'\').textContent=this.value" onchange="phoneCmd(\''+id+'\',\'quality?value=\'+this.value)" style="width:100%"></div>';
+  // 变焦
+  html += '<div style="margin:8px 0"><label style="display:flex;justify-content:space-between;font-size:12px;color:#8aa0b8">数码变焦 <span id="phone-zoom-'+id+'">1.0x</span></label><input type="range" min="1" max="8" step="0.1" value="1" oninput="document.getElementById(\'phone-zoom-'+id+'\').textContent=this.value+\'x\'" onchange="phoneCmd(\''+id+'\',\'zoom?value=\'+this.value)" style="width:100%"></div>';
+  // 曝光补偿
+  html += '<div style="margin:8px 0"><label style="display:flex;justify-content:space-between;font-size:12px;color:#8aa0b8">曝光补偿 <span id="phone-ev-'+id+'">0.0</span></label><input type="range" min="-3" max="3" step="0.25" value="0" oninput="document.getElementById(\'phone-ev-'+id+'\').textContent=parseFloat(this.value).toFixed(2)" onchange="phoneCmd(\''+id+'\',\'exposure?value=\'+this.value)" style="width:100%"></div>';
+  // 白平衡
+  html += '<div style="margin:8px 0"><label style="font-size:12px;color:#8aa0b8">白平衡</label><select onchange="phoneCmd(\''+id+'\',\'white_balance?mode=\'+this.value)" style="width:100%;background:#0a121a;color:#8aa0b8;border:1px solid #1e2d3d;border-radius:4px;padding:4px;font-size:12px;margin-top:4px">';
+  html += '<option value="auto" selected>自动</option><option value="sunny">晴天</option><option value="cloudy">阴天</option><option value="fluorescent">荧光灯</option><option value="incandescent">白炽灯</option>';
+  html += '</select></div>';
+  // 状态行
+  html += '<div style="margin:8px 0;color:#6b8299;font-size:11px;border-top:1px solid #1a2a3a;padding-top:8px" id="phone-status-'+id+'"></div>';
   document.getElementById('phone-ctrls-'+id).innerHTML = html;
 }
 
 function phoneCmd(id, cmd) {
   var st = document.getElementById('phone-status-'+id);
-  if (st) st.textContent = cmd+'...';
+  if (st) st.textContent = '⏳ '+cmd+'...';
   fetch(API+'/api/phone/'+id+'/'+cmd, {method:'POST'}).then(function(r){
     return r.json();
   }).then(function(data){

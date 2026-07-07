@@ -1,5 +1,5 @@
 # =============================================
-# Dockerfile — video-stream-manager backend
+# Dockerfile — video-stream-manager v0.8.3
 # =============================================
 # Builds: Go backend + ffmpeg + wapa-pull
 # MediaMTX runs as a separate container (see docker-compose.yml)

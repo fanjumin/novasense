@@ -332,10 +332,10 @@ func (s *Store) ListRecordings(deviceID string) []*Recording {
 		rows, err = s.db.Query("SELECT id, device_id, file_path, play_url, start_time, end_time, duration, file_size, event_type, created_at FROM recordings WHERE device_id=? ORDER BY created_at DESC", deviceID)
 	}
 	if err != nil {
-		return nil
+		return []*Recording{}
 	}
 	defer rows.Close()
-	var result []*Recording
+	result := []*Recording{}
 	for rows.Next() {
 		r := &Recording{}
 		rows.Scan(&r.ID, &r.DeviceID, &r.FilePath, &r.PlayURL, &r.StartTime, &r.EndTime, &r.Duration, &r.FileSize, &r.EventType, &r.CreatedAt)
@@ -369,10 +369,10 @@ func (s *Store) ListSchedules() []*Schedule {
 	defer s.mu.RUnlock()
 	rows, err := s.db.Query("SELECT id, name, device_id, time_start, time_end, days, duration_min, enabled, last_triggered, created_at FROM schedules ORDER BY created_at DESC")
 	if err != nil {
-		return nil
+		return []*Schedule{}
 	}
 	defer rows.Close()
-	var result []*Schedule
+	result := []*Schedule{}
 	for rows.Next() {
 		sc := &Schedule{}
 		var enabledInt int
@@ -434,10 +434,10 @@ func (s *Store) ListSnapshotConfigs() []*SnapshotConfig {
 	defer s.mu.RUnlock()
 	rows, err := s.db.Query("SELECT id, device_id, enabled, interval_sec, retention_days FROM snapshot_configs")
 	if err != nil {
-		return nil
+		return []*SnapshotConfig{}
 	}
 	defer rows.Close()
-	var result []*SnapshotConfig
+	result := []*SnapshotConfig{}
 	for rows.Next() {
 		sn := &SnapshotConfig{}
 		var enabledInt int
