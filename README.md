@@ -1,6 +1,6 @@
-# NetCam Pro — Android Sensor Camera
+# NovaSense Agent — Android Sensor Camera
 
-Turn your Android phone into a **WiFi IP camera + environmental sensor server**. No cloud, no subscription — just your phone and a browser.
+Turn your Android phone into a **NovaSense sensor camera + environmental sensor server**. No cloud, no subscription — just your phone and a browser.
 
 ## Features
 
