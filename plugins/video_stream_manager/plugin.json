@@ -1,9 +1,0 @@
-{
-    "name": "video_stream_manager",
-    "version": "0.0.1",
-    "description": "视频流管理 — 摄像头接入、直播推流、远程控制",
-    "author": "NetCam Center",
-    "depends_on": [],
-    "enabled": true,
-    "config": {}
-}
