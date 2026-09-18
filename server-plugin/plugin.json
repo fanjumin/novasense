@@ -1,0 +1,60 @@
+{
+  "name": "NovaSense 感知网络",
+  "identifier": "novasense",
+  "version": "0.8.4",
+  "description": "NovaSense 感知网络 — 多设备感知管理、实时画面、设备配置",
+  "author": "EasyKai",
+  "min_app_version": "0.10.0",
+
+  "category": "system",
+  "icon": "camera",
+  "tags": ["监控", "感知", "IoT", "摄像头"],
+
+  "depends_on": {},
+
+  "config": {
+    "gateway_host": "http://203.0.113.17:8899",
+    "gateway_password": "admin",
+    "refresh_interval": 5
+  },
+
+  "permissions": [
+    "network.request"
+  ],
+
+  "hooks": {
+    "provides": [],
+    "listens": []
+  },
+
+  "agents": [],
+
+  "dashboard": {
+    "stats": [
+      { "key": "devices_total", "title": "设备总数",   "type": "counter" },
+      { "key": "devices_online", "title": "在线设备",   "type": "gauge"   },
+      { "key": "devices_offline","title": "离线设备",   "type": "gauge"   }
+    ]
+  },
+
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "gateway_host": {
+        "title": "Gateway 地址",
+        "type": "string",
+        "description": "NovaSense Gateway HTTP 地址（含端口）"
+      },
+      "gateway_password": {
+        "title": "Gateway 密码",
+        "type": "string",
+        "description": "登录 Gateway 的管理员密码"
+      },
+      "refresh_interval": {
+        "title": "刷新间隔（秒）",
+        "type": "integer",
+        "description": "设备状态自动刷新间隔"
+      }
+    }
+  }
+}

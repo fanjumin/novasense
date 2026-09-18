@@ -1,0 +1,38 @@
+# NovaSense 插件 - 中文翻译
+# 插件标准 v1.1 → i18n 说明
+# 文件命名：{locale}.yml，放在 plugins/{name}/i18n/
+
+common:
+  loading: "加载中…"
+  error: "错误"
+  online: "在线"
+  offline: "离线"
+  status: "状态"
+  total: "总计"
+  unknown: "未知"
+  refresh: "刷新"
+  close: "关闭"
+  save: "保存"
+  cancel: "取消"
+
+header:
+  title: "NovaSense 感知网络"
+  gateway_ok: "Gateway 运行中"
+  gateway_offline: "Gateway 离线"
+
+stats:
+  devices_total: "设备总数"
+  devices_online: "在线"
+  devices_offline: "离线"
+
+device:
+  no_devices: "暂无设备"
+  click_view: "点击观看"
+  offline_label: "设备离线"
+  start_failed: "启动失败"
+  connect_error: "无法连接 Gateway: {error}"
+  start_proxy: "观看"
+  settings: "设置"
+  protocol: "协议"
+  address: "地址"
+  name: "名称"

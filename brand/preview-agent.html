@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>NovaSense Agent — 品牌化预览</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;background:#0A0E14;color:#E8EDF2;display:flex;justify-content:center;align-items:center;min-height:100vh;-webkit-font-smoothing:antialiased}
+
+/* ─── Phone frame ─── */
+.phone{width:360px;height:740px;background:#080B10;border-radius:36px;padding:12px;box-shadow:0 0 40px rgba(0,0,0,0.6),0 0 80px rgba(0,200,255,0.04);position:relative}
+.phone-notch{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:120px;height:24px;background:#0A0E14;border-radius:0 0 16px 16px;z-index:10;display:flex;align-items:center;justify-content:center;gap:6px}
+.phone-notch .cam-dot{width:8px;height:8px;border-radius:50%;background:#1A2A3A}
+.phone-screen{width:100%;height:100%;border-radius:28px;overflow:hidden;background:#0A0E14;display:flex;flex-direction:column;position:relative}
+
+/* ─── Status bar ─── */
+.status-bar{display:flex;justify-content:space-between;padding:8px 16px 4px;font-size:11px;color:#5A7288;font-weight:500;position:relative;z-index:20}
+.status-bar .time{font-weight:600;color:#8AA0B8}
+.status-bar .icons{display:flex;gap:4px}
+
+/* ─── Camera preview ─── */
+.cam-preview{flex:1;background:radial-gradient(ellipse at center,#0D1A2A,#060A0F);position:relative;display:flex;flex-direction:column;overflow:hidden}
+.cam-preview .stars{position:absolute;inset:0;background-image:radial-gradient(1px 1px at 15% 25%,rgba(255,255,255,0.12),transparent),radial-gradient(1.5px 1.5px at 65% 20%,rgba(0,200,255,0.15),transparent),radial-gradient(1px 1px at 80% 70%,rgba(124,77,255,0.1),transparent),radial-gradient(1px 1px at 30% 80%,rgba(255,255,255,0.06),transparent);pointer-events:none}
+
+/* ─── Overlay info ─── */
+.cam-info{position:absolute;top:8px;left:12px;z-index:5;display:flex;flex-direction:column;gap:4px}
+.cam-info .name{font-size:14px;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,0.8)}
+.cam-info .sub{font-size:10px;color:rgba(255,255,255,0.6);text-shadow:0 1px 3px rgba(0,0,0,0.8);display:flex;align-items:center;gap:6px}
+.cam-info .sub .rdot{width:5px;height:5px;border-radius:50%;background:#69F0AE;display:inline-block}
+.cam-info .sub .rdot.rec{background:#EF5350;animation:rec-pulse 1.5s ease-in-out infinite}
+
+@keyframes rec-pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+
+.cam-controls{position:absolute;bottom:0;left:0;right:0;z-index:5;display:flex;gap:8px;padding:10px 12px 14px;background:linear-gradient(transparent,rgba(0,0,0,0.7))}
+.cam-controls .btn-circle{width:44px;height:44px;border-radius:50%;border:none;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .12s;background:rgba(255,255,255,0.08);color:#fff;backdrop-filter:blur(4px)}
+.cam-controls .btn-circle:hover{background:rgba(255,255,255,0.15)}
+.cam-controls .btn-circle.primary{background:#00C8FF;color:#0A0E14;width:52px;height:52px;font-size:18px}
+.cam-controls .btn-circle.primary:hover{box-shadow:0 0 16px rgba(0,200,255,0.4)}
+.cam-controls .spacer{flex:1}
+.cam-controls .btn-circle.active{background:rgba(0,200,255,0.2);color:#00C8FF;border:1px solid rgba(0,200,255,0.3)}
+
+/* ─── Bottom panel ─── */
+.panel{background:#0A121A;padding:10px 16px 16px;border-top:1px solid rgba(255,255,255,0.04)}
+.panel .tabs{display:flex;gap:0;margin-bottom:10px}
+.panel .tabs .tab{flex:1;text-align:center;padding:8px 0;font-size:11px;font-weight:500;color:#5A7288;cursor:pointer;border-bottom:2px solid transparent;transition:all .12s}
+.panel .tabs .tab.active{color:#00C8FF;border-bottom-color:#00C8FF}
+.panel .tabs .tab:hover{color:#8AA0B8}
+
+.panel .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.panel .row:last-child{margin-bottom:0}
+.panel label{font-size:10px;color:#5A7288;width:50px;flex-shrink:0}
+.panel select{background:#0D151F;border:1px solid #1E2D3D;border-radius:4px;padding:4px 8px;font-size:11px;color:#E8EDF2;font-family:inherit;cursor:pointer;flex:1}
+.panel select:focus{outline:none;border-color:#00C8FF}
+.panel .btn-sm{background:transparent;border:1px solid rgba(255,255,255,0.06);color:#5A7288;border-radius:4px;padding:4px 10px;font-size:10px;cursor:pointer;transition:all .1s;font-family:inherit}
+.panel .btn-sm:hover{color:#00C8FF;border-color:#00C8FF;background:rgba(0,200,255,0.06)}
+.panel .btn-sm.active{color:#00C8FF;border-color:#00C8FF;background:rgba(0,200,255,0.08)}
+.panel .btn-sm.danger{color:#EF5350;border-color:rgba(239,83,80,0.3)}
+.panel .btn-sm.danger:hover{border-color:#EF5350;background:rgba(239,83,80,0.06)}
+.panel .slider-row{display:flex;align-items:center;gap:6px;flex:1}
+.panel input[type=range]{flex:1;height:2px;-webkit-appearance:none;background:#1E2D3D;border-radius:2px;outline:none}
+.panel input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:#00C8FF;cursor:pointer;border:none}
+.panel .val{font-size:10px;color:#5A7288;width:30px;text-align:right}
+</style>
+</head>
+<body>
+
+<div class="phone">
+  <div class="phone-notch"><div class="cam-dot"></div></div>
+  <div class="phone-screen">
+    <!-- Status bar -->
+    <div class="status-bar">
+      <span class="time">14:28</span>
+      <span class="icons">📶 🔋</span>
+    </div>
+
+    <!-- Camera preview area -->
+    <div class="cam-preview">
+      <div class="stars"></div>
+      <div class="cam-info">
+        <div class="name">📷 OPPO A79</div>
+        <div class="sub"><span class="rdot"></span> 推流中 · 1280×720 · 25fps</div>
+      </div>
+      <!-- Bottom controls overlay -->
+      <div class="cam-controls">
+        <button class="btn-circle">↺</button>
+        <button class="btn-circle">🔦</button>
+        <div class="spacer"></div>
+        <button class="btn-circle primary">⏺</button>
+        <div class="spacer"></div>
+        <button class="btn-circle active">⇆</button>
+        <button class="btn-circle">⚡</button>
+      </div>
+    </div>
+
+    <!-- Bottom control panel -->
+    <div class="panel">
+      <div class="tabs">
+        <div class="tab active">相机</div>
+        <div class="tab">推流</div>
+        <div class="tab">传感器</div>
+        <div class="tab">设置</div>
+      </div>
+
+      <!-- Row 1: Resolution + Quality -->
+      <div class="row">
+        <label>分辨率</label>
+        <select><option>3840×2160</option><option selected>1920×1080</option><option>1280×720</option><option>640×480</option></select>
+        <label style="width:auto;margin-left:4px">质量</label>
+        <div class="slider-row">
+          <input type="range" min="1" max="100" value="85">
+          <span class="val">85%</span>
+        </div>
+      </div>
+
+      <!-- Row 2: Bitrate + FPS -->
+      <div class="row">
+        <label>码率</label>
+        <select><option>5 Mbps</option><option selected>3 Mbps</option><option>2 Mbps</option><option>1 Mbps</option></select>
+        <label style="width:auto;margin-left:4px">FPS</label>
+        <select><option>30</option><option selected>25</option><option>15</option><option>10</option></select>
+        <button class="btn-sm active">H.264</button>
+        <button class="btn-sm">H.265</button>
+      </div>
+
+      <!-- Row 3: Controls -->
+      <div class="row">
+        <label>操作</label>
+        <button class="btn-sm">📸 截图</button>
+        <button class="btn-sm">🔊 音频</button>
+        <button class="btn-sm active">↻ 镜像</button>
+        <button class="btn-sm danger">■ 停止</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

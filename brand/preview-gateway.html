@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NovaSense Gateway — 品牌化预览</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;background:#0A0E14;color:#E8EDF2;min-height:100vh;-webkit-font-smoothing:antialiased}
+
+/* ─── Layout ─── */
+.app{display:flex;min-height:100vh}
+.sidebar{width:220px;background:#080B10;border-right:1px solid rgba(255,255,255,0.04);padding:20px 16px;display:flex;flex-direction:column;flex-shrink:0}
+.main{flex:1;padding:20px 24px;overflow-y:auto}
+
+/* ─── Sidebar ─── */
+.sidebar .logo{display:flex;align-items:center;gap:8px;margin-bottom:32px;padding:0 4px}
+.sidebar .logo svg{width:28px;height:28px}
+.sidebar .logo span{font-size:16px;font-weight:700;color:#E8EDF2}
+.nav{display:flex;flex-direction:column;gap:2px;flex:1}
+.nav a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:6px;font-size:13px;font-weight:500;color:#5A7288;text-decoration:none;transition:all .12s}
+.nav a:hover{color:#8AA0B8;background:rgba(255,255,255,0.03)}
+.nav a.active{color:#00C8FF;background:rgba(0,200,255,0.08)}
+.nav a .ico{width:18px;height:18px;opacity:0.6}
+.nav a.active .ico{opacity:1}
+.sidebar .bottom{margin-top:auto;padding-top:16px;border-top:1px solid rgba(255,255,255,0.04)}
+.sidebar .bottom a{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;font-size:12px;color:#5A7288;text-decoration:none;transition:all .12s}
+.sidebar .bottom a:hover{color:#8AA0B8;background:rgba(255,255,255,0.03)}
+
+/* ─── Header bar ─── */
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.topbar h1{font-size:20px;font-weight:600}
+.topbar .status{display:flex;align-items:center;gap:16px}
+.topbar .stat-item{font-size:12px;color:#5A7288;display:flex;align-items:center;gap:6px}
+.topbar .dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+
+/* ─── Camera grid ─── */
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:20px}
+@media(max-width:800px){.grid{grid-template-columns:1fr}}
+.card{background:#0A121A;border:1px solid #1A2A3A;border-radius:8px;overflow:hidden;transition:all .15s}
+.card:hover{border-color:#00C8FF;box-shadow:0 0 12px rgba(0,200,255,0.1)}
+.card .preview{aspect-ratio:16/9;background:radial-gradient(ellipse at center,#111B25,#060A0F);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.card .preview .stars{position:absolute;inset:0;background-image:radial-gradient(1px 1px at 20% 30%,rgba(255,255,255,0.15),transparent),radial-gradient(1px 1px at 70% 15%,rgba(255,255,255,0.1),transparent),radial-gradient(1.5px 1.5px at 40% 70%,rgba(0,200,255,0.2),transparent),radial-gradient(1px 1px at 85% 60%,rgba(124,77,255,0.15),transparent),radial-gradient(1px 1px at 10% 80%,rgba(255,255,255,0.08),transparent),radial-gradient(1.5px 1.5px at 55% 40%,rgba(0,200,255,0.1),transparent);pointer-events:none}
+.card .preview .cam-label{position:relative;z-index:1;text-align:center}
+.card .preview .cam-label .icon{font-size:32px;display:block;margin-bottom:4px}
+.card .preview .cam-label .hint{font-size:11px;color:#5A7288}
+.card .preview .live-badge{position:absolute;top:8px;left:8px;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;z-index:2}
+.card .preview .live-badge.on{background:rgba(105,240,174,0.15);color:#69F0AE}
+.card .preview .live-badge.off{background:rgba(239,83,80,0.12);color:#EF5350}
+.card .preview .live-badge.pushing{background:rgba(0,200,255,0.12);color:#00C8FF}
+.card .info{padding:10px 12px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(255,255,255,0.04)}
+.card .info .name{font-size:13px;font-weight:500}
+.card .info .meta{font-size:11px;color:#5A7288}
+.card .actions{display:flex;gap:4px;padding:8px 12px;border-top:1px solid rgba(255,255,255,0.04)}
+.card .actions button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:#5A7288;padding:4px 10px;border-radius:4px;font-size:11px;cursor:pointer;transition:all .1s;font-family:inherit}
+.card .actions button:hover{color:#00C8FF;border-color:#00C8FF;background:rgba(0,200,255,0.06)}
+
+/* ─── Row of status cards ─── */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.stat-card{background:#0A121A;border:1px solid rgba(255,255,255,0.04);border-radius:8px;padding:14px 16px}
+.stat-card .num{font-size:24px;font-weight:700;color:#E8EDF2}
+.stat-card .label{font-size:12px;color:#5A7288;margin-top:4px}
+.stat-card .trend{font-size:11px;margin-top:6px}
+.stat-card .trend.up{color:#69F0AE}
+.stat-card .trend.down{color:#EF5350}
+
+/* ─── Bottom table ─── */
+.section-title{font-size:12px;font-weight:600;color:#5A7288;letter-spacing:1px;margin-bottom:12px}
+.table-wrap{background:#0A121A;border:1px solid rgba(255,255,255,0.04);border-radius:8px;overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{padding:10px 14px;text-align:left;font-weight:500;color:#5A7288;font-size:11px;letter-spacing:0.5px;background:rgba(0,0,0,0.2)}
+td{padding:10px 14px;border-top:1px solid rgba(255,255,255,0.03);color:#8AA0B8}
+tr:hover td{background:rgba(0,200,255,0.02)}
+td .tag{display:inline-flex;padding:2px 6px;border-radius:3px;font-size:10px;font-weight:500}
+td .tag.green{background:rgba(105,240,174,0.1);color:#69F0AE}
+td .tag.red{background:rgba(239,83,80,0.1);color:#EF5350}
+td .tag.cyan{background:rgba(0,200,255,0.1);color:#00C8FF}
+td .tag.gray{background:rgba(90,114,136,0.15);color:#5A7288}
+td .ops button{background:transparent;border:none;color:#5A7288;font-size:16px;cursor:pointer;padding:2px 6px;border-radius:4px;transition:all .1s}
+td .ops button:hover{color:#00C8FF;background:rgba(0,200,255,0.08)}
+
+/* ─── Pulsing dot animation ─── */
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:0.3}}
+.dot.pulse{animation:pulse-dot 2s ease-in-out infinite}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="logo">
+    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="20" cy="28" r="2.5" fill="#00C8FF"/>
+      <circle cx="44" cy="28" r="2" fill="#7C4DFF" opacity="0.8"/>
+      <circle cx="32" cy="48" r="1.5" fill="#5A7288" opacity="0.6"/>
+      <line x1="20" y1="28" x2="44" y2="28" stroke="#00C8FF" stroke-width="0.8" opacity="0.5"/>
+      <line x1="20" y1="28" x2="32" y2="48" stroke="#7C4DFF" stroke-width="0.6" opacity="0.3"/>
+      <line x1="44" y1="28" x2="32" y2="48" stroke="#5A7288" stroke-width="0.6" opacity="0.3"/>
+      <circle cx="32" cy="28" r="4" fill="#00C8FF" filter="url(#gs)"/>
+      <defs><filter id="gs"><feGaussianBlur stdDeviation="1.5"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+    </svg>
+    <span>NovaSense</span>
+  </div>
+  <div class="nav">
+    <a href="#" class="active"><span class="ico">◆</span> 实时画面</a>
+    <a href="#"><span class="ico">◈</span> 录像回放</a>
+    <a href="#"><span class="ico">◇</span> 设备管理</a>
+    <a href="#"><span class="ico">○</span> 推流管理</a>
+    <a href="#"><span class="ico">◎</span> 告警事件</a>
+    <a href="#"><span class="ico">⊡</span> 系统设置</a>
+  </div>
+  <div class="bottom">
+    <a href="#">⚙ 配置</a>
+    <a href="#">🔌 4 设备在线</a>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <h1>实时画面</h1>
+    <div class="status">
+      <div class="stat-item"><span class="dot" style="background:#69F0AE"></span>4 在线</div>
+      <div class="stat-item"><span class="dot" style="background:#EF5350"></span>1 离线</div>
+      <div class="stat-item"><span class="dot pulse" style="background:#00C8FF"></span>2 推流中</div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat-card">
+      <div class="num">5</div>
+      <div class="label">设备总数</div>
+      <div class="trend up">↑ 1 本周新增</div>
+    </div>
+    <div class="stat-card">
+      <div class="num">4</div>
+      <div class="label">在线设备</div>
+      <div class="trend up">↑ 100% 可用率</div>
+    </div>
+    <div class="stat-card">
+      <div class="num">2</div>
+      <div class="label">推流中</div>
+      <div class="trend up">→ 云端转发</div>
+    </div>
+    <div class="stat-card">
+      <div class="num">128</div>
+      <div class="label">今日告警</div>
+      <div class="trend down">↓ 12% 较昨日</div>
+    </div>
+  </div>
+
+  <!-- Camera Grid -->
+  <div class="grid">
+    <!-- Card 1 -->
+    <div class="card">
+      <div class="preview">
+        <div class="stars"></div>
+        <span class="live-badge on">● 在线</span>
+        <div class="cam-label">
+          <span class="icon">🏪</span>
+          <span class="hint">门口 · RTSP 1920×1080</span>
+        </div>
+      </div>
+      <div class="info">
+        <span class="name">门口摄像头</span>
+        <span class="meta">RTSP · 屋内</span>
+      </div>
+      <div class="actions">
+        <button>▶ 预览</button>
+        <button>⏺ 录制</button>
+        <button>↗ 推流</button>
+      </div>
+    </div>
+    <!-- Card 2 -->
+    <div class="card">
+      <div class="preview">
+        <div class="stars"></div>
+        <span class="live-badge pushing">● 推流中</span>
+        <div class="cam-label">
+          <span class="icon">📱</span>
+          <span class="hint">A79 · WiFi 1280×720</span>
+        </div>
+      </div>
+      <div class="info">
+        <span class="name">OPPO A79</span>
+        <span class="meta">HTTP · 屋内</span>
+      </div>
+      <div class="actions">
+        <button>▶ 预览</button>
+        <button>⏺ 录制</button>
+        <button style="color:#00C8FF">■ 停止</button>
+      </div>
+    </div>
+    <!-- Card 3 -->
+    <div class="card">
+      <div class="preview">
+        <div class="stars"></div>
+        <span class="live-badge on">● 在线</span>
+        <div class="cam-label">
+          <span class="icon">🎥</span>
+          <span class="hint">波粒 · WAPA 1920×1080</span>
+        </div>
+      </div>
+      <div class="info">
+        <span class="name">192.0.2.141 波粒</span>
+        <span class="meta">WAPA · 屋内</span>
+      </div>
+      <div class="actions">
+        <button>▶ 预览</button>
+        <button>⏺ 录制</button>
+        <button>↗ 推流</button>
+      </div>
+    </div>
+    <!-- Card 4 -->
+    <div class="card">
+      <div class="preview">
+        <div class="stars"></div>
+        <span class="live-badge off">● 离线</span>
+        <div class="cam-label">
+          <span class="icon">📷</span>
+          <span class="hint">USB · 驱动异常</span>
+        </div>
+      </div>
+      <div class="info">
+        <span class="name" style="color:#5A7288">USB 摄像头</span>
+        <span class="meta">V4L2 · 仓库</span>
+      </div>
+      <div class="actions">
+        <button disabled style="opacity:0.3">▶ 预览</button>
+        <button disabled style="opacity:0.3">⏺ 录制</button>
+        <button disabled style="opacity:0.3">↗ 推流</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Device Table -->
+  <div class="section-title">设备列表</div>
+  <div class="table-wrap">
+    <table>
+      <tr><th>设备名称</th><th>协议</th><th>状态</th><th>推流</th><th>分组</th><th></th></tr>
+      <tr>
+        <td style="font-weight:500;color:#E8EDF2">门口摄像头</td>
+        <td><span class="tag gray">RTSP</span></td>
+        <td><span class="tag green">在线</span></td>
+        <td><span class="tag gray">未启用</span></td>
+        <td>屋内</td>
+        <td class="ops"><button>⋯</button></td>
+      </tr>
+      <tr>
+        <td style="font-weight:500;color:#E8EDF2">OPPO A79</td>
+        <td><span class="tag cyan">HTTP</span></td>
+        <td><span class="tag green">在线</span></td>
+        <td><span class="tag cyan">推流中</span></td>
+        <td>屋内</td>
+        <td class="ops"><button>⋯</button></td>
+      </tr>
+      <tr>
+        <td style="font-weight:500;color:#E8EDF2">192.0.2.141 波粒</td>
+        <td><span class="tag gray">WAPA</span></td>
+        <td><span class="tag green">在线</span></td>
+        <td><span class="tag gray">未启用</span></td>
+        <td>屋内</td>
+        <td class="ops"><button>⋯</button></td>
+      </tr>
+      <tr>
+        <td style="font-weight:500;color:#E8EDF2;opacity:0.5">USB 摄像头</td>
+        <td><span class="tag gray">V4L2</span></td>
+        <td><span class="tag red">离线</span></td>
+        <td><span class="tag gray">未启用</span></td>
+        <td>仓库</td>
+        <td class="ops"><button>⋯</button></td>
+      </tr>
+    </table>
+  </div>
+
+</div>
+</div>
+
+</body>
+</html>

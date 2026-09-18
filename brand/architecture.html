@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NovaSense 感知网络 — 架构全景</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;background:#0A0E14;color:#E8EDF2;min-height:100vh;-webkit-font-smoothing:antialiased;padding:32px 24px}
+.wrap{max-width:960px;margin:0 auto}
+
+h1{font-size:24px;font-weight:700;margin-bottom:4px}
+.sub{font-size:13px;color:#5A7288;letter-spacing:2px;margin-bottom:32px}
+
+/* Layer */
+.layer{margin-bottom:32px}
+.layer-label{font-size:11px;font-weight:600;color:#5A7288;letter-spacing:2px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.layer-label .bar{flex:1;height:1px;background:rgba(255,255,255,0.06)}
+.layer-label .tag{background:rgba(0,200,255,0.1);color:#00C8FF;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:500;letter-spacing:0}
+
+/* Card grid */
+.device-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.device-card{background:#0A121A;border:1px solid rgba(255,255,255,0.04);border-radius:8px;padding:16px;transition:all .15s;cursor:default}
+.device-card:hover{border-color:rgba(0,200,255,0.2);box-shadow:0 0 8px rgba(0,200,255,0.04)}
+.device-card .icon{font-size:28px;display:block;margin-bottom:8px}
+.device-card .name{font-size:13px;font-weight:600;margin-bottom:2px}
+.device-card .desc{font-size:11px;color:#5A7288;line-height:1.4}
+.device-card .badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:500;margin-top:6px}
+.device-card .badge.ai{background:rgba(124,77,255,0.12);color:#7C4DFF}
+.device-card .badge.edge{background:rgba(0,200,255,0.1);color:#00C8FF}
+
+/* Arrow connector */
+.arrow-row{display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 0;color:#5A7288;font-size:12px}
+.arrow-row .line{flex:1;max-width:60px;height:1px;background:rgba(255,255,255,0.08)}
+.arrow-row .chevron{font-size:18px;color:rgba(255,255,255,0.12)}
+
+/* Gateway highlight box */
+.gateway-box{background:linear-gradient(135deg,#0D1A2A 0%,#0A121A 100%);border:1px solid rgba(0,200,255,0.15);border-radius:12px;padding:20px 24px;margin-bottom:32px;display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.gateway-box .gw-icon{font-size:36px;flex-shrink:0}
+.gateway-box .gw-info{flex:1;min-width:200px}
+.gateway-box .gw-info .name{font-size:16px;font-weight:600;color:#00C8FF;margin-bottom:4px}
+.gateway-box .gw-info .desc{font-size:12px;color:#8AA0B8;line-height:1.5}
+.gateway-box .gw-specs{display:flex;gap:8px;flex-wrap:wrap}
+.gateway-box .gw-specs .spec{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:6px;padding:6px 12px;font-size:11px;color:#5A7288}
+
+/* AI highlight */
+.ai-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-bottom:32px}
+.ai-card{background:rgba(124,77,255,0.04);border:1px solid rgba(124,77,255,0.1);border-radius:8px;padding:14px 16px}
+.ai-card .ico{font-size:20px;margin-bottom:6px}
+.ai-card .title{font-size:12px;font-weight:600;color:#7C4DFF;margin-bottom:2px}
+.ai-card .desc{font-size:11px;color:#8AA0B8;line-height:1.4}
+
+/* Tag styles for specs */
+.tag-group{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.platform-tag{display:inline-flex;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:500}
+.platform-tag.cyan{background:rgba(0,200,255,0.1);color:#00C8FF}
+.platform-tag.purple{background:rgba(124,77,255,0.1);color:#7C4DFF}
+
+@media(max-width:600px){
+  .device-grid{grid-template-columns:repeat(2,1fr)}
+  .ai-row{grid-template-columns:1fr}
+  .gateway-box{flex-direction:column;align-items:flex-start}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>NovaSense — 感知网络全景</h1>
+<div class="sub">不是监控系统。是万物感知层。</div>
+
+<!-- Layer 1: Sensing Devices -->
+<div class="layer">
+  <div class="layer-label"><span>感知层</span><span class="bar"></span><span class="tag">SENSING LAYER</span></div>
+  <div class="device-grid">
+    <div class="device-card">
+      <span class="icon">📱</span>
+      <div class="name">旧手机 / 平板</div>
+      <div class="desc">摄像头 + 传感器(温湿度/气压/加速度/陀螺仪/麦克风)</div>
+      <div class="tag-group"><span class="platform-tag cyan">WiFi</span></div>
+    </div>
+    <div class="device-card">
+      <span class="icon">📹</span>
+      <div class="name">IP 摄像头</div>
+      <div class="desc">RTSP / ONVIF / 各品牌安防摄像头</div>
+      <div class="tag-group"><span class="platform-tag cyan">RTSP</span><span class="platform-tag cyan">ONVIF</span></div>
+    </div>
+    <div class="device-card">
+      <span class="icon">🎥</span>
+      <div class="name">USB 摄像头</div>
+      <div class="desc">即插即用 · V4L2 驱动 · 低成本部署</div>
+      <div class="tag-group"><span class="platform-tag cyan">USB</span><span class="platform-tag cyan">V4L2</span></div>
+    </div>
+    <div class="device-card" style="border-color:rgba(124,77,255,0.25);background:rgba(124,77,255,0.03)">
+      <span class="icon">📷</span>
+      <div class="name">3D 深度摄像头</div>
+      <div class="desc">RealSense / Orbbec / Kinect · RGB + 深度图 · 空间感知</div>
+      <div class="tag-group"><span class="platform-tag purple">3D</span><span class="platform-tag cyan">USB</span><span class="platform-tag ai">AI</span></div>
+      <div style="margin-top:8px;font-size:10px;color:#7C4DFF;border-top:1px solid rgba(124,77,255,0.1);padding-top:6px">
+        ✦ 人流追踪 · 货架交互 · <strong>无人购物</strong>
+      </div>
+    </div>
+    <div class="device-card">
+      <span class="icon">🌡️</span>
+      <div class="name">环境传感器</div>
+      <div class="desc">温湿度 / PM2.5 / CO₂ / 气压 / 光照 · 独立或手机转发</div>
+      <div class="tag-group"><span class="platform-tag cyan">BLE</span><span class="platform-tag cyan">Zigbee</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Arrow -->
+<div class="arrow-row"><span class="line"></span><span class="chevron">▼</span><span class="line"></span></div>
+
+<!-- Layer 2: Gateway (highlighted) -->
+<div class="gateway-box">
+  <div class="gw-icon">🔗</div>
+  <div class="gw-info">
+    <div class="name">NovaSense Gateway</div>
+    <div class="desc">本地感知网关 — 汇聚所有传感器数据，运行 AI 推理，控制推流与存储。所有配置走数据库，零硬编码。</div>
+  </div>
+  <div class="gw-specs">
+    <span class="spec">x86 Linux</span>
+    <span class="spec">RK3588</span>
+    <span class="spec">树梅派</span>
+    <span class="spec">NVIDIA Jetson</span>
+    <span class="spec">任意 ARM64</span>
+  </div>
+</div>
+
+<!-- AI Capabilities -->
+<div class="layer">
+  <div class="layer-label"><span>AI 感知能力</span><span class="bar"></span><span class="tag" style="background:rgba(124,77,255,0.12);color:#7C4DFF">EDGE AI</span></div>
+  <div class="ai-row">
+    <div class="ai-card">
+      <div class="ico">👤</div>
+      <div class="title">人脸识别</div>
+      <div class="desc">本地推理 · 员工/会员/陌生人识别</div>
+    </div>
+    <div class="ai-card">
+      <div class="ico">🧍</div>
+      <div class="title">人体检测</div>
+      <div class="desc">区域占用 / 客流 / 入侵告警</div>
+    </div>
+    <div class="ai-card">
+      <div class="ico">🔲</div>
+      <div class="title">3D 空间感知</div>
+      <div class="desc">深度摄像头 · 空间建模 · 跌倒检测</div>
+    </div>
+    <div class="ai-card">
+      <div class="ico">📊</div>
+      <div class="title">环境分析</div>
+      <div class="desc">温湿度趋势 / 空气质量 / 异常告警</div>
+    </div>
+    <div class="ai-card">
+      <div class="ico">🛒</div>
+      <div class="title">无人购物</div>
+      <div class="desc">3D 深度摄像头 + AI · 人员追踪 · 货架交互检测 · 自动结算</div>
+    </div>
+    <div class="ai-card">
+      <div class="ico">🧠</div>
+      <div class="title">边缘推理</div>
+      <div class="desc">RK3588 NPU / Jetson CUDA · 不依赖云端</div>
+    </div>
+    <div class="ai-card">
+      <div class="ico">🔮</div>
+      <div class="title">多传感器融合</div>
+      <div class="desc">视觉 + 环境 + 穿戴 → 综合决策</div>
+    </div>
+  </div>
+</div>
+
+<!-- Arrow -->
+<div class="arrow-row"><span class="line"></span><span class="chevron">▼</span><span class="line"></span></div>
+
+<!-- Layer 3: Cloud -->
+<div class="layer">
+  <div class="layer-label"><span>云平台</span><span class="bar"></span><span class="tag">CLOUD</span></div>
+  <div class="device-grid" style="grid-template-columns:repeat(3,1fr)">
+    <div class="device-card">
+      <span class="icon">☁️</span>
+      <div class="name">NovaSense Cloud</div>
+      <div class="desc">设备管理 / 远程查看 / 多租户 / API Key / License</div>
+    </div>
+    <div class="device-card">
+      <span class="icon">📱</span>
+      <div class="name">NovaSense Viewer</div>
+      <div class="desc">移动端远程查看 / 推送通知 / 画中画 / 多设备切换</div>
+    </div>
+    <div class="device-card">
+      <span class="icon">🤖</span>
+      <div class="name">AI 服务</div>
+      <div class="desc">云端推理扩展 / 训练 / 模型更新</div>
+    </div>
+  </div>
+</div>
+
+<!-- Footer brand story -->
+<div style="margin-top:48px;padding:24px;border-radius:12px;border:1px solid rgba(255,255,255,0.04);background:linear-gradient(135deg,#0A121A,#080B10)">
+  <p style="font-size:14px;color:#8AA0B8;line-height:1.8">
+    一颗旧手机是暗的。但当你把几百颗星星连在一起——<br>
+    旧手机、IP 摄像头、USB 摄像头、3D 深度传感器、环境监测器……<br>
+    它们就构成了一个<strong style="color:#00C8FF">感知星座</strong>。
+  </p>
+  <p style="font-size:13px;color:#5A7288;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.04)">
+    零售店、仓库、办公室、家庭、学校、工地——<br>
+    任何需要感知的地方。摄像头只是第一种器官。品牌不需要换。
+  </p>
+</div>
+
+</div>
+</body>
+</html>

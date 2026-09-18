@@ -1,0 +1,186 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" fill="none">
+  <defs>
+    <style>
+      @keyframes p1{0%,100%{opacity:.2;r:1.5}50%{opacity:1;r:3}}
+      @keyframes p2{0%,100%{opacity:.2;r:1.5}50%{opacity:1;r:3}}
+      @keyframes p3{0%,100%{opacity:.2;r:1.5}50%{opacity:1;r:3}}
+      @keyframes p4{0%,100%{opacity:.2;r:1.5}50%{opacity:1;r:3}}
+      @keyframes p5{0%,100%{opacity:.2;r:1.5}50%{opacity:1;r:3}}
+      @keyframes p6{0%,100%{opacity:.2;r:1.5}50%{opacity:1;r:3}}
+      @keyframes p7{0%,100%{opacity:.2;r:1.4}50%{opacity:.8;r:2.2}}
+      @keyframes p8{0%,100%{opacity:.2;r:1.4}50%{opacity:.8;r:2.2}}
+      @keyframes p9{0%,100%{opacity:.15;r:1.2}50%{opacity:.6;r:1.8}}
+      @keyframes p10{0%,100%{opacity:.15;r:1.2}50%{opacity:.6;r:1.8}}
+      .n1{animation:p1 3s ease-in-out infinite;animation-delay:0s}
+      .n2{animation:p2 3s ease-in-out infinite;animation-delay:.33s}
+      .n3{animation:p3 3s ease-in-out infinite;animation-delay:.66s}
+      .n4{animation:p4 3s ease-in-out infinite;animation-delay:1s}
+      .n5{animation:p5 3s ease-in-out infinite;animation-delay:1.33s}
+      .n6{animation:p6 3s ease-in-out infinite;animation-delay:1.66s}
+      .n7{animation:p7 3s ease-in-out infinite;animation-delay:2s}
+      .n8{animation:p8 3s ease-in-out infinite;animation-delay:2.33s}
+      .n9{animation:p9 3s ease-in-out infinite;animation-delay:2.66s}
+      .n10{animation:p10 3s ease-in-out infinite;animation-delay:2.9s}
+      @keyframes spin1{to{transform:rotate(360deg)}}
+      @keyframes spin2{to{transform:rotate(-360deg)}}
+      @keyframes spin3{to{transform:rotate(300deg)}}
+      @keyframes spin4{to{transform:rotate(-240deg)}}
+      @keyframes flicker{0%,100%{opacity:.5}15%{opacity:1}30%{opacity:.3}45%{opacity:.9}60%{opacity:.2}75%{opacity:.7}90%{opacity:.4}}
+      @keyframes glowB{0%,100%{opacity:.1;r:12}50%{opacity:.3;r:20}}
+      @keyframes glowS{0%,100%{opacity:.06;r:22}50%{opacity:.18;r:32}}
+      @keyframes comet1{0%{transform:translate(-30px,-30px);opacity:0}3%{opacity:1}15%{opacity:1}18%{opacity:0}100%{transform:translate(60px,60px);opacity:0}}
+      @keyframes comet2{0%{transform:translate(25px,-25px);opacity:0}6%{opacity:1}18%{opacity:1}21%{opacity:0}100%{transform:translate(-50px,50px);opacity:0}}
+      @keyframes blink{0%,100%{opacity:.1}50%{opacity:.5}}
+      @keyframes breathe{0%,100%{opacity:.08;r:38}50%{opacity:.18;r:42}}
+      .s1{animation:spin1 5s linear infinite;transform-origin:80px 80px}
+      .s2{animation:spin2 7s linear infinite;transform-origin:80px 80px}
+      .s3{animation:spin3 11s linear infinite;transform-origin:80px 80px}
+      .s4{animation:spin4 13s linear infinite;transform-origin:80px 80px}
+      .core-flicker{animation:flicker 3.5s ease-in-out infinite}
+      .core-glow1{animation:glowB 2.8s ease-in-out infinite}
+      .core-glow2{animation:glowS 4s ease-in-out infinite}
+      .bg-breathe{animation:breathe 6s ease-in-out infinite}
+      .comet1{animation:comet1 5s ease-in-out infinite;animation-delay:0s}
+      .comet2{animation:comet2 7s ease-in-out infinite;animation-delay:2s}
+      .blink{animation:blink 2s ease-in-out infinite}
+      .bg-star{animation:blink 3s ease-in-out infinite}
+    </style>
+    <linearGradient id="gC" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00C8FF"/><stop offset="100%" stop-color="#00E5FF"/>
+    </linearGradient>
+    <linearGradient id="gP" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7C4DFF"/><stop offset="100%" stop-color="#B388FF"/>
+    </linearGradient>
+    <linearGradient id="gG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#69F0AE"/><stop offset="100%" stop-color="#00E676"/>
+    </linearGradient>
+    <linearGradient id="gOrbit1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00C8FF" stop-opacity=".25"/><stop offset="50%" stop-color="#7C4DFF" stop-opacity=".1"/><stop offset="100%" stop-color="#00C8FF" stop-opacity=".25"/>
+    </linearGradient>
+    <linearGradient id="gOrbit2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7C4DFF" stop-opacity=".15"/><stop offset="50%" stop-color="#69F0AE" stop-opacity=".08"/><stop offset="100%" stop-color="#7C4DFF" stop-opacity=".15"/>
+    </linearGradient>
+    <radialGradient id="bgG">
+      <stop offset="0%" stop-color="#00C8FF" stop-opacity=".08"/>
+      <stop offset="40%" stop-color="#7C4DFF" stop-opacity=".04"/>
+      <stop offset="100%" stop-color="#00C8FF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="gB"><feGaussianBlur stdDeviation="3.5"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="gM"><feGaussianBlur stdDeviation="2"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="gS"><feGaussianBlur stdDeviation="1"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+
+  <!-- Background deep glow -->
+  <circle cx="80" cy="80" r="70" fill="url(#bgG)"/>
+  <circle class="bg-breathe" cx="80" cy="80" r="40" fill="url(#bgG)"/>
+
+  <!-- ===== ORBIT RINGS (4 layers, different speeds/directions) ===== -->
+  <!-- Ring 1: outermost, faint -->
+  <circle class="s4" cx="80" cy="80" r="62" stroke="#5A7288" stroke-width=".3" opacity=".06" fill="none" stroke-dasharray="1 12"/>
+  <!-- Ring 2: purple gradient -->
+  <circle class="s3" cx="80" cy="80" r="50" stroke="url(#gOrbit2)" stroke-width=".5" opacity=".12" fill="none" stroke-dasharray="3 10"/>
+  <!-- Ring 3: cyan main orbit -->
+  <circle class="s1" cx="80" cy="80" r="38" stroke="url(#gOrbit1)" stroke-width=".8" opacity=".18" fill="none" stroke-dasharray="4 7"/>
+  <!-- Ring 4: inner tight -->
+  <circle class="s2" cx="80" cy="80" r="26" stroke="#7C4DFF" stroke-width=".6" opacity=".12" fill="none" stroke-dasharray="2 6"/>
+
+  <!-- Orbital nodes on rings -->
+  <circle class="s1" cx="80" cy="42" r="2" fill="#00C8FF" opacity=".55" filter="url(#gS)"/>
+  <circle class="s1" cx="80" cy="118" r="1.5" fill="#00C8FF" opacity=".35" filter="url(#gS)"/>
+  <circle class="s2" cx="54" cy="80" r="1.8" fill="#7C4DFF" opacity=".45" filter="url(#gS)"/>
+  <circle class="s2" cx="106" cy="80" r="1.2" fill="#7C4DFF" opacity=".25"/>
+  <circle class="s3" cx="30" cy="80" r="1.5" fill="#69F0AE" opacity=".3" filter="url(#gS)"/>
+  <circle class="s4" cx="18" cy="80" r="1" fill="#5A7288" opacity=".2"/>
+
+  <!-- ===== CONSTELLATION NODES (10 nodes, staggered pulse) ===== -->
+  <!-- Outer ring: 6 major nodes -->
+  <circle class="n1" cx="80" cy="22" r="2.5" fill="url(#gC)" filter="url(#gM)"/>
+  <circle class="n2" cx="28" cy="45" r="2.5" fill="url(#gP)" filter="url(#gM)"/>
+  <circle class="n3" cx="30" cy="105" r="2.5" fill="url(#gG)" filter="url(#gM)"/>
+  <circle class="n4" cx="80" cy="130" r="2.5" fill="url(#gC)" filter="url(#gM)"/>
+  <circle class="n5" cx="130" cy="105" r="2.5" fill="url(#gP)" filter="url(#gM)"/>
+  <circle class="n6" cx="132" cy="45" r="2.5" fill="url(#gG)" filter="url(#gM)"/>
+
+  <!-- Inner ring: 4 minor nodes -->
+  <circle class="n7" cx="52" cy="55" r="2" fill="url(#gC)" opacity=".7" filter="url(#gS)"/>
+  <circle class="n8" cx="108" cy="55" r="2" fill="url(#gP)" opacity=".7" filter="url(#gS)"/>
+  <circle class="n9" cx="48" cy="102" r="1.8" fill="#5A7288" opacity=".5" filter="url(#gS)"/>
+  <circle class="n10" cx="112" cy="102" r="1.8" fill="#5A7288" opacity=".5" filter="url(#gS)"/>
+
+  <!-- ===== CONSTELLATION LINES ===== -->
+  <!-- Outer ring connections (hexagon) -->
+  <line x1="80" y1="22" x2="28" y2="45" stroke="url(#gC)" stroke-width="1" opacity=".35"/>
+  <line x1="28" y1="45" x2="30" y2="105" stroke="url(#gP)" stroke-width="1" opacity=".3"/>
+  <line x1="30" y1="105" x2="80" y2="130" stroke="url(#gG)" stroke-width="1" opacity=".35"/>
+  <line x1="80" y1="130" x2="130" y2="105" stroke="url(#gC)" stroke-width="1" opacity=".3"/>
+  <line x1="130" y1="105" x2="132" y2="45" stroke="url(#gP)" stroke-width="1" opacity=".3"/>
+  <line x1="132" y1="45" x2="80" y2="22" stroke="url(#gG)" stroke-width="1" opacity=".35"/>
+
+  <!-- Cross connections (inner to outer) -->
+  <line x1="80" y1="22" x2="108" y2="55" stroke="#00C8FF" stroke-width=".6" opacity=".2"/>
+  <line x1="80" y1="22" x2="52" y2="55" stroke="#00C8FF" stroke-width=".6" opacity=".2"/>
+  <line x1="28" y1="45" x2="52" y2="55" stroke="#7C4DFF" stroke-width=".5" opacity=".15"/>
+  <line x1="132" y1="45" x2="108" y2="55" stroke="#7C4DFF" stroke-width=".5" opacity=".15"/>
+  <line x1="30" y1="105" x2="48" y2="102" stroke="#69F0AE" stroke-width=".5" opacity=".15"/>
+  <line x1="130" y1="105" x2="112" y2="102" stroke="#69F0AE" stroke-width=".5" opacity=".15"/>
+
+  <!-- Cross connections (inner to core) -->
+  <line x1="52" y1="55" x2="80" y2="80" stroke="#00C8FF" stroke-width=".6" opacity=".15"/>
+  <line x1="108" y1="55" x2="80" y2="80" stroke="#7C4DFF" stroke-width=".6" opacity=".15"/>
+  <line x1="48" y1="102" x2="80" y2="80" stroke="#5A7288" stroke-width=".5" opacity=".1"/>
+  <line x1="112" y1="102" x2="80" y2="80" stroke="#5A7288" stroke-width=".5" opacity=".1"/>
+
+  <!-- Outer cross diagonals -->
+  <line x1="28" y1="45" x2="80" y2="130" stroke="#5A7288" stroke-width=".4" opacity=".08"/>
+  <line x1="132" y1="45" x2="80" y2="130" stroke="#5A7288" stroke-width=".4" opacity=".08"/>
+  <line x1="80" y1="22" x2="30" y2="105" stroke="#5A7288" stroke-width=".4" opacity=".08"/>
+  <line x1="80" y1="22" x2="130" y2="105" stroke="#5A7288" stroke-width=".4" opacity=".08"/>
+
+  <!-- ===== COMETS ===== -->
+  <line class="comet1" x1="0" y1="0" x2="16" y2="16" stroke="#00C8FF" stroke-width="2" stroke-linecap="round" opacity=".9" filter="url(#gS)"/>
+  <line class="comet2" x1="0" y1="0" x2="-14" y2="14" stroke="#7C4DFF" stroke-width="1.5" stroke-linecap="round" opacity=".7" filter="url(#gS)"/>
+
+  <!-- ===== CORE STAR ===== -->
+  <!-- Outermost glow -->
+  <circle class="core-glow2" cx="80" cy="80" r="22" fill="url(#gC)"/>
+  <!-- Middle glow -->
+  <circle class="core-glow1" cx="80" cy="80" r="12" fill="url(#gC)"/>
+  <!-- Soft aura -->
+  <circle cx="80" cy="80" r="7" fill="url(#gC)" opacity=".1"/>
+  <circle cx="80" cy="80" r="5" fill="url(#gC)" opacity=".15"/>
+  <!-- Main star -->
+  <circle class="core-flicker" cx="80" cy="80" r="4" fill="url(#gC)" filter="url(#gB)"/>
+  <!-- Inner bright core -->
+  <circle cx="80" cy="80" r="2" fill="#fff" opacity=".6" filter="url(#gS)"/>
+  <!-- Core highlight offset -->
+  <circle cx="78" cy="78" r="1" fill="#fff" opacity=".35"/>
+
+  <!-- ===== BACKGROUND STARS (24 dots) ===== -->
+  <circle cx="16" cy="24" r=".7" fill="#5A7288" opacity=".25" class="bg-star"/>
+  <circle cx="42" cy="14" r=".5" fill="#5A7288" opacity=".2" class="bg-star" style="animation-delay:.5s"/>
+  <circle cx="120" cy="18" r=".8" fill="#5A7288" opacity=".2" class="bg-star" style="animation-delay:1s"/>
+  <circle cx="144" cy="32" r=".5" fill="#5A7288" opacity=".15" class="bg-star" style="animation-delay:1.5s"/>
+  <circle cx="10" cy="60" r=".6" fill="#5A7288" opacity=".2" class="bg-star" style="animation-delay:.3s"/>
+  <circle cx="150" cy="60" r=".7" fill="#5A7288" opacity=".25" class="bg-star" style="animation-delay:.8s"/>
+  <circle cx="8" cy="90" r=".5" fill="#5A7288" opacity=".15" class="bg-star" style="animation-delay:1.2s"/>
+  <circle cx="152" cy="90" r=".6" fill="#5A7288" opacity=".2" class="bg-star" style="animation-delay:1.7s"/>
+  <circle cx="20" cy="120" r=".7" fill="#5A7288" opacity=".2" class="bg-star" style="animation-delay:.6s"/>
+  <circle cx="140" cy="130" r=".5" fill="#5A7288" opacity=".15" class="bg-star" style="animation-delay:1.1s"/>
+  <circle cx="50" cy="150" r=".6" fill="#5A7288" opacity=".2" class="bg-star" style="animation-delay:1.4s"/>
+  <circle cx="110" cy="148" r=".7" fill="#5A7288" opacity=".2" class="bg-star" style="animation-delay:0s"/>
+  <circle cx="60" cy="8" r=".4" fill="#5A7288" opacity=".12" class="bg-star" style="animation-delay:.9s"/>
+  <circle cx="100" cy="6" r=".5" fill="#5A7288" opacity=".15" class="bg-star" style="animation-delay:1.8s"/>
+  <circle cx="25" cy="140" r=".4" fill="#5A7288" opacity=".12" class="bg-star" style="animation-delay:2.2s"/>
+  <circle cx="135" cy="145" r=".5" fill="#5A7288" opacity=".15" class="bg-star" style="animation-delay:.4s"/>
+  <circle cx="72" cy="155" r=".4" fill="#5A7288" opacity=".1" class="bg-star" style="animation-delay:2s"/>
+  <circle cx="88" cy="155" r=".4" fill="#5A7288" opacity=".1" class="bg-star" style="animation-delay:.7s"/>
+  <circle cx="6" cy="45" r=".4" fill="#5A7288" opacity=".1" class="bg-star"/>
+  <circle cx="154" cy="45" r=".4" fill="#5A7288" opacity=".1" class="bg-star" style="animation-delay:1.3s"/>
+  <circle cx="35" cy="155" r=".5" fill="#5A7288" opacity=".12" class="bg-star" style="animation-delay:2.5s"/>
+  <circle cx="125" cy="155" r=".5" fill="#5A7288" opacity=".12" class="bg-star" style="animation-delay:.2s"/>
+  <circle cx="145" cy="20" r=".4" fill="#5A7288" opacity=".1" class="bg-star" style="animation-delay:1.6s"/>
+  <circle cx="15" cy="15" r=".4" fill="#5A7288" opacity=".1" class="bg-star" style="animation-delay:.1s"/>
+
+  <!-- Center node glow highlight (extra detail) -->
+  <circle cx="80" cy="80" r=".5" fill="#fff" opacity=".8"/>
+</svg>

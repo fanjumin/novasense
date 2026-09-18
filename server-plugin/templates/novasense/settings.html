@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>Gateway 配置</title></head>
+<body style="font-family:'Inter',sans-serif;background:#0A0E14;color:#E8EDF2;padding:24px;max-width:600px;margin:0 auto">
+<h2 style="background:linear-gradient(135deg,#00C8FF,#7C4DFF);-webkit-background-clip:text;-webkit-text-fill-color:transparent">✦ NovaSense 配置</h2>
+<p style="color:#8AA0B8;font-size:13px">绑定你的 NovaSense Gateway 到当前账户</p>
+<form id="cfgForm" style="margin-top:20px">
+  <div style="margin-bottom:16px">
+    <label style="display:block;font-size:12px;color:#8AA0B8;margin-bottom:4px">Gateway 地址</label>
+    <input id="gwHost" type="text" style="width:100%;padding:10px 12px;background:#111B25;border:1px solid #1A2A3A;border-radius:8px;color:#E8EDF2;font-size:14px" placeholder="http://localhost:18899">
+    <div style="font-size:11px;color:#5A7288;margin-top:4px">建议使用 SSH 反向隧道: localhost:18899</div>
+  </div>
+  <div style="margin-bottom:16px">
+    <label style="display:block;font-size:12px;color:#8AA0B8;margin-bottom:4px">Gateway 密码</label>
+    <input id="gwPass" type="password" style="width:100%;padding:10px 12px;background:#111B25;border:1px solid #1A2A3A;border-radius:8px;color:#E8EDF2;font-size:14px" placeholder="admin">
+  </div>
+  <div style="margin-bottom:16px">
+    <label style="display:block;font-size:12px;color:#8AA0B8;margin-bottom:4px">HLS 地址</label>
+    <input id="hlsBase" type="text" style="width:100%;padding:10px 12px;background:#111B25;border:1px solid #1A2A3A;border-radius:8px;color:#E8EDF2;font-size:14px" placeholder="http://localhost:8888">
+    <div style="font-size:11px;color:#5A7288;margin-top:4px">MediaMTX HLS 服务地址</div>
+  </div>
+  <button type="submit" style="padding:10px 24px;background:#00C8FF;border:none;border-radius:8px;color:#000;font-weight:600;cursor:pointer">保存</button>
+</form>
+<div id="msg" style="margin-top:12px;font-size:13px"></div>
+<script>
+const API='/plugin/novasense/api';
+async function load(){const r=await(await fetch(API+'/tenant/config')).json();if(r.success&&r.data){document.getElementById('gwHost').value=r.data.gateway_host||'';document.getElementById('gwPass').value=r.data.gateway_password||'';document.getElementById('hlsBase').value=r.data.hls_base||''}}
+document.getElementById('cfgForm').onsubmit=async function(e){e.preventDefault();const r=await(await fetch(API+'/tenant/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({gateway_host:document.getElementById('gwHost').value,gateway_password:document.getElementById('gwPass').value,hls_base:document.getElementById('hlsBase').value})})).json();document.getElementById('msg').textContent=r.success?'✅ 保存成功':'❌ '+r.error;document.getElementById('msg').style.color=r.success?'#69F0AE':'#EF5350'};
+load();
+</script>
+</body>
+</html>

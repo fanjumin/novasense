@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <filter id="g4"><feGaussianBlur stdDeviation="1.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <linearGradient id="grad4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00C8FF"/><stop offset="100%" stop-color="#69F0AE"/>
+    </linearGradient>
+  </defs>
+  <!-- Lens/viewfinder circle -->
+  <circle cx="32" cy="32" r="26" stroke="#00C8FF" stroke-width="1.5" opacity="0.3"/>
+  <circle cx="32" cy="32" r="22" stroke="#00C8FF" stroke-width="0.8" opacity="0.2"/>
+  <!-- Crosshair lines -->
+  <line x1="32" y1="10" x2="32" y2="22" stroke="#00C8FF" stroke-width="0.8" opacity="0.35"/>
+  <line x1="32" y1="42" x2="32" y2="54" stroke="#00C8FF" stroke-width="0.8" opacity="0.35"/>
+  <line x1="10" y1="32" x2="22" y2="32" stroke="#00C8FF" stroke-width="0.8" opacity="0.35"/>
+  <line x1="42" y1="32" x2="54" y2="32" stroke="#00C8FF" stroke-width="0.8" opacity="0.35"/>
+  <!-- Star inside -->
+  <circle cx="32" cy="32" r="3" fill="#00C8FF" filter="url(#g4)"/>
+  <circle cx="32" cy="32" r="5" fill="#00C8FF" opacity="0.12"/>
+  <!-- Corner brackets -->
+  <line x1="8" y1="8" x2="8" y2="16" stroke="#00C8FF" stroke-width="1.5" opacity="0.5"/>
+  <line x1="8" y1="8" x2="16" y2="8" stroke="#00C8FF" stroke-width="1.5" opacity="0.5"/>
+  <line x1="56" y1="8" x2="56" y2="16" stroke="#00C8FF" stroke-width="1.5" opacity="0.5"/>
+  <line x1="56" y1="8" x2="48" y2="8" stroke="#00C8FF" stroke-width="1.5" opacity="0.5"/>
+  <line x1="8" y1="56" x2="8" y2="48" stroke="#00C8FF" stroke-width="1.5" opacity="0.5"/>
+  <line x1="8" y1="56" x2="16" y2="56" stroke="#00C8FF" stroke-width="1.5" opacity="0.5"/>
+  <line x1="56" y1="56" x2="56" y2="48" stroke="#00C8FF" stroke-width="1.5" opacity="0.5"/>
+  <line x1="56" y1="56" x2="48" y2="56" stroke="#00C8FF" stroke-width="1.5" opacity="0.5"/>
+</svg>

@@ -1,0 +1,38 @@
+# NovaSense Plugin - English Translation
+# Plugin spec v1.1 → i18n convention
+# File name: {locale}.yml, placed in plugins/{name}/i18n/
+
+common:
+  loading: "Loading…"
+  error: "Error"
+  online: "Online"
+  offline: "Offline"
+  status: "Status"
+  total: "Total"
+  unknown: "Unknown"
+  refresh: "Refresh"
+  close: "Close"
+  save: "Save"
+  cancel: "Cancel"
+
+header:
+  title: "NovaSense Perception Network"
+  gateway_ok: "Gateway Running"
+  gateway_offline: "Gateway Offline"
+
+stats:
+  devices_total: "Total Devices"
+  devices_online: "Online"
+  devices_offline: "Offline"
+
+device:
+  no_devices: "No devices"
+  click_view: "Click to view"
+  offline_label: "Device offline"
+  start_failed: "Start failed"
+  connect_error: "Cannot connect to Gateway: {error}"
+  start_proxy: "Watch"
+  settings: "Settings"
+  protocol: "Protocol"
+  address: "Address"
+  name: "Name"

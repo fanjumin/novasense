@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <filter id="g2"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00C8FF"/><stop offset="100%" stop-color="#69F0AE"/>
+    </linearGradient>
+  </defs>
+  <!-- Star rays -->
+  <line x1="32" y1="4" x2="32" y2="14" stroke="#00C8FF" stroke-width="1" opacity="0.4"/>
+  <line x1="32" y1="50" x2="32" y2="60" stroke="#00C8FF" stroke-width="1" opacity="0.4"/>
+  <line x1="4" y1="32" x2="14" y2="32" stroke="#00C8FF" stroke-width="1" opacity="0.4"/>
+  <line x1="50" y1="32" x2="60" y2="32" stroke="#00C8FF" stroke-width="1" opacity="0.4"/>
+  <line x1="10.6" y1="10.6" x2="17.2" y2="17.2" stroke="#7C4DFF" stroke-width="0.8" opacity="0.3"/>
+  <line x1="46.8" y1="46.8" x2="53.4" y2="53.4" stroke="#7C4DFF" stroke-width="0.8" opacity="0.3"/>
+  <line x1="10.6" y1="53.4" x2="17.2" y2="46.8" stroke="#7C4DFF" stroke-width="0.8" opacity="0.3"/>
+  <line x1="46.8" y1="17.2" x2="53.4" y2="10.6" stroke="#7C4DFF" stroke-width="0.8" opacity="0.3"/>
+  <!-- Star + glow -->
+  <circle cx="32" cy="32" r="4" fill="#00C8FF" filter="url(#g2)"/>
+  <circle cx="32" cy="32" r="6" fill="#00C8FF" opacity="0.15"/>
+  <circle cx="32" cy="32" r="9" fill="#00C8FF" opacity="0.06"/>
+</svg>

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NovaSense 感知网络</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═════ NovaSense Brand Tokens ═════ */
+:root {
+  --ns-bg-deep:      #0A0E14;
+  --ns-bg-surface:   #0A121A;
+  --ns-bg-elevated:  #111B25;
+  --ns-bg-hover:     #141E2A;
+  --ns-cyan:         #00C8FF;
+  --ns-purple:       #7C4DFF;
+  --ns-green:        #69F0AE;
+  --ns-amber:        #FFAB40;
+  --ns-red:          #EF5350;
+  --ns-gray:         #5A7288;
+  --ns-text-primary:   #E8EDF2;
+  --ns-text-secondary: #8AA0B8;
+  --ns-text-muted:     #5A7288;
+  --ns-border:       #1A2A3A;
+  --ns-border-hover: #1E2D3D;
+  --ns-shadow-md:   0 4px 12px rgba(0,0,0,0.4);
+  --ns-shadow-glow: 0 0 8px rgba(0,200,255,0.2);
+  --ns-radius-md:  8px;
+  --ns-radius-lg:  12px;
+  --ns-gradient-primary: linear-gradient(135deg, #00C8FF, #7C4DFF);
+  --ns-gradient-surface: linear-gradient(135deg, #141E2A 0%, #0A121A 100%);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: var(--ns-bg-deep);
+  color: var(--ns-text-primary);
+  min-height: 100vh;
+}
+
+/* ─── Header ─── */
+.header {
+  background: var(--ns-bg-surface);
+  border-bottom: 1px solid var(--ns-border);
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.header h1 {
+  font-size: 20px;
+  font-weight: 600;
+  background: var(--ns-gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.header .status {
+  font-size: 13px;
+  color: var(--ns-text-secondary);
+}
+.header .status span {
+  color: var(--ns-green);
+}
+
+/* ─── Stats Bar ─── */
+.stats {
+  display: flex;
+  gap: 16px;
+  padding: 20px 24px;
+}
+.stat-card {
+  background: var(--ns-bg-surface);
+  border: 1px solid var(--ns-border);
+  border-radius: var(--ns-radius-md);
+  padding: 16px 24px;
+  flex: 1;
+}
+.stat-card .label {
+  font-size: 12px;
+  color: var(--ns-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.stat-card .value {
+  font-size: 28px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+.stat-card.online .value { color: var(--ns-green); }
+.stat-card.offline .value { color: var(--ns-red); }
+.stat-card.total .value { color: var(--ns-cyan); }
+
+/* ─── Device Grid ─── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  padding: 0 24px 24px;
+}
+.card {
+  background: var(--ns-bg-surface);
+  border: 1px solid var(--ns-border);
+  border-radius: var(--ns-radius-lg);
+  overflow: hidden;
+  transition: border-color 200ms;
+}
+.card:hover { border-color: var(--ns-border-hover); }
+
+.card-header {
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--ns-border);
+}
+.card-header .name {
+  font-size: 14px;
+  font-weight: 600;
+}
+.card-header .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 8px;
+}
+.dot.online { background: var(--ns-green); box-shadow: 0 0 6px var(--ns-green); }
+.dot.offline { background: var(--ns-red); }
+
+.card-body {
+  padding: 16px;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ns-bg-elevated);
+}
+.card-body .placeholder {
+  color: var(--ns-text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.card-footer {
+  padding: 10px 16px;
+  display: flex;
+  gap: 8px;
+  border-top: 1px solid var(--ns-border);
+}
+.btn {
+  padding: 6px 14px;
+  border-radius: var(--ns-radius-md);
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--ns-border);
+  background: transparent;
+  color: var(--ns-text-secondary);
+  cursor: pointer;
+  transition: all 150ms;
+}
+.btn:hover {
+  border-color: var(--ns-cyan);
+  color: var(--ns-cyan);
+}
+.btn-primary {
+  background: var(--ns-cyan);
+  color: #000;
+  border-color: var(--ns-cyan);
+  font-weight: 600;
+}
+.btn-primary:hover {
+  background: #40c4ff;
+  box-shadow: var(--ns-shadow-glow);
+}
+.btn-danger {
+  border-color: var(--ns-red);
+  color: var(--ns-red);
+}
+.btn-danger:hover {
+  background: var(--ns-red);
+  color: #000;
+}
+
+/* ─── Loading ─── */
+.loading {
+  text-align: center;
+  padding: 60px;
+  color: var(--ns-text-muted);
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.loading span {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* ─── Alert ─── */
+.alert {
+  background: rgba(239,83,80,0.1);
+  border: 1px solid var(--ns-red);
+  color: var(--ns-red);
+  padding: 12px 16px;
+  border-radius: var(--ns-radius-md);
+  margin: 0 24px 16px;
+  font-size: 13px;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>✦ NovaSense</h1>
+  <div class="status" id="headerStatus">{{ t('加载中…') }}</div>
+</div>
+
+<div class="stats" id="statsBar">
+  <div class="stat-card total">
+    <div class="label">{{ t('设备总数') }}</div>
+    <div class="value" id="statTotal">—</div>
+  </div>
+  <div class="stat-card online">
+    <div class="label">{{ t('在线') }}</div>
+    <div class="value" id="statOnline">—</div>
+  </div>
+  <div class="stat-card offline">
+    <div class="label">{{ t('离线') }}</div>
+    <div class="value" id="statOffline">—</div>
+  </div>
+</div>
+
+<div id="errorContainer"></div>
+
+<div class="grid" id="deviceGrid">
+  <div class="loading"><span>{{ t('加载中…') }}</span></div>
+</div>
+
+<script>
+const API = '/plugin/novasense/api';
+const I18N = {};
+let _tLoaded = false;
+
+// Load translations
+fetch(API + '/i18n').then(r => r.json()).then(d => {
+  Object.assign(I18N, d);
+  _tLoaded = true;
+}).catch(() => {});
+
+function _(key, fallback) {
+  return I18N[key] || fallback || key;
+}
+
+async function gw(path, opts = {}) {
+  const r = await fetch(API + path, opts);
+  return r.json().catch(() => ({error: r.statusText}));
+}
+
+async function loadDevices() {
+  const data = await gw('/devices');
+  const health = await gw('/health');
+
+  if (data.error) {
+    document.getElementById('deviceGrid').innerHTML =
+      `<div class="alert">⚠️ ${_('status_error','Gateway 离线')}: ${esc(data.error)}</div>`;
+    document.getElementById('headerStatus').innerHTML = '⚠️ '+_('status_error','Gateway 离线');
+    return;
+  }
+
+  // Stats
+  const devices = Array.isArray(data) ? data : [];
+  const online = devices.filter(d => d.status === 'online').length;
+  const offline = devices.filter(d => d.status === 'offline').length;
+  document.getElementById('statTotal').textContent = devices.length;
+  document.getElementById('statOnline').textContent = online;
+  document.getElementById('statOffline').textContent = offline;
+
+  // Header status
+  if (health && health.status === 'ok') {
+    document.getElementById('headerStatus').innerHTML = '✦ '+_('status_ok','Gateway 运行中');
+  }
+
+  // Device cards
+  const grid = document.getElementById('deviceGrid');
+  if (devices.length === 0) {
+    grid.innerHTML = '<div class="loading"><span>暂无设备</span></div>';
+    return;
+  }
+
+  grid.innerHTML = devices.map(d => `
+    <div class="card">
+      <div class="card-header">
+        <span class="name">
+          <span class="dot ${d.status}"></span>${esc(d.name || d.id)}
+        </span>
+        <span style="font-size:12px;color:var(--ns-text-muted)">${d.protocol || ''}</span>
+      </div>
+      <div class="card-body" id="preview-${d.id}">
+        <div class="placeholder">📷 ${d.status === 'online' ? _('click_view','点击观看') : _('offline','设备离线')}</div>
+      </div>
+      <div class="card-footer">
+        ${d.status === 'online'
+          ? `<button class="btn btn-primary" onclick="startProxy('${d.id}')">▶ ${_('start_proxy','观看')}</button>
+             <button class="btn" onclick="openSettings('${d.id}')">⚙ ${_('settings','设置')}</button>`
+          : `<button class="btn btn-danger" disabled>${_('offline','离线')}</button>`}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function startProxy(id) {
+  const r = await gw(`/proxy/start/${id}`, {method:'POST'});
+  if (r.hls_url) {
+    const container = document.getElementById('preview-' + id);
+    container.innerHTML = `<video controls autoplay style="width:100%;border-radius:4px">
+      <source src="${r.hls_url}" type="application/x-mpegURL">
+    </video>`;
+  } else {
+    const container = document.getElementById('preview-' + id);
+    container.innerHTML = `<div class="placeholder">⚠️ 启动失败</div>`;
+  }
+}
+
+function openSettings(id) {
+  // Show device info in a simple alert for now
+  const name = document.querySelector(`#preview-${id}`)?.closest('.card')?.querySelector('.name')?.textContent?.trim() || id;
+  alert(`NovaSense: ${name}\nSettings page coming soon.`);
+}
+
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// Auto refresh
+loadDevices();
+setInterval(loadDevices, 10000);
+</script>
+</body>
+</html>

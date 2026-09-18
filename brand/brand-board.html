@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NovaSense 视觉系统</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;background:#0A0E14;color:#E8EDF2;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:960px;margin:0 auto;padding:48px 24px}
+
+/* header */
+.hdr{text-align:center;margin-bottom:64px}
+.hdr svg{height:56px;margin-bottom:16px}
+.hdr h1{font-size:32px;font-weight:300;color:#5A7288;letter-spacing:2px}
+.hdr h1 strong{font-weight:700;color:#E8EDF2}
+
+/* section */
+.sec{margin-bottom:56px}
+.sec h2{font-size:13px;font-weight:600;color:#5A7288;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px;border-bottom:1px solid rgba(255,255,255,0.06);padding-bottom:12px}
+.sec p{font-size:14px;color:#8AA0B8;margin-bottom:16px}
+
+/* color swatch */
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.swatch{border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,0.06)}
+.swatch .preview{height:80px;position:relative}
+.swatch .preview .dot{position:absolute;top:8px;right:8px;width:8px;height:8px;border-radius:50%;border:1px solid rgba(255,255,255,0.2)}
+.swatch .info{padding:10px 12px;background:#0A121A}
+.swatch .name{font-size:12px;font-weight:500;color:#E8EDF2}
+.swatch .val{font-size:11px;color:#5A7288;font-family:'SF Mono','JetBrains Mono',monospace;margin-top:2px}
+
+/* icons row */
+.icons{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
+.icon-card{text-align:center;padding:24px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:#0A121A;transition:all .15s}
+.icon-card:hover{border-color:#00C8FF;box-shadow:0 0 12px rgba(0,200,255,0.12)}
+.icon-card svg{width:56px;height:56px;margin-bottom:12px}
+.icon-card .label{font-size:13px;font-weight:500;color:#E8EDF2;margin-bottom:4px}
+.icon-card .desc{font-size:11px;color:#5A7288}
+
+/* components */
+.comp-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.comp-card{padding:20px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:#0A121A}
+.comp-card h3{font-size:12px;font-weight:600;color:#5A7288;margin-bottom:12px;letter-spacing:1px}
+.comp-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.btn{display:inline-flex;align-items:center;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;border:none;cursor:pointer;transition:all .1s;text-decoration:none}
+.btn-primary{background:#00C8FF;color:#0A0E14}
+.btn-primary:hover{box-shadow:0 0 12px rgba(0,200,255,0.4)}
+.btn-secondary{background:transparent;border:1px solid #00C8FF;color:#00C8FF}
+.btn-secondary:hover{background:rgba(0,200,255,0.08)}
+.btn-ghost{background:transparent;border:1px solid #1A2A3A;color:#8AA0B8}
+.btn-ghost:hover{border-color:#5A7288;color:#E8EDF2}
+.btn-danger{background:#EF5350;color:#fff}
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500}
+.badge-online{background:rgba(105,240,174,0.12);color:#69F0AE}
+.badge-offline{background:rgba(239,83,80,0.12);color:#EF5350}
+.badge-pushing{background:rgba(0,200,255,0.12);color:#00C8FF}
+input{background:#0D151F;border:1px solid #1E2D3D;border-radius:6px;padding:8px 12px;font-size:13px;color:#E8EDF2;font-family:inherit;width:200px;transition:border .15s}
+input:focus{outline:none;border-color:#00C8FF;box-shadow:0 0 6px rgba(0,200,255,0.15)}
+.tag{display:inline-flex;padding:2px 6px;border-radius:3px;font-size:10px;font-weight:500}
+.tag-gray{background:#1A2A3A;color:#5A7288}
+.tag-cyan{background:rgba(0,200,255,0.1);color:#00C8FF}
+.tag-purple{background:rgba(124,77,255,0.1);color:#7C4DFF}
+
+/* typography */
+.type-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.type-card{padding:20px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:#0A121A}
+.type-display{font-size:32px;font-weight:700;letter-spacing:-0.5px;color:#E8EDF2;margin-bottom:4px}
+.type-display-light{font-size:32px;font-weight:300;color:#00C8FF;margin-bottom:4px}
+.type-body{font-size:14px;color:#8AA0B8;margin-bottom:8px}
+.type-mono{font-family:'JetBrains Mono','SF Mono',monospace;font-size:13px;color:#69F0AE;background:#0A0E14;padding:8px 12px;border-radius:4px}
+
+/* gradient bar */
+.grad-row{display:flex;gap:12px;margin-bottom:12px}
+.grad-bar{flex:1;height:40px;border-radius:6px}
+
+@media(max-width:600px){
+  .icons{grid-template-columns:repeat(2,1fr)}
+  .comp-grid,.type-grid{grid-template-columns:1fr}
+  .swatches{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<!-- Header -->
+<div class="hdr">
+  <img src="assets/logo-novasense.svg" alt="NovaSense" style="height:56px">
+  <h1><strong>NovaSense</strong> 视觉系统</h1>
+  <p style="color:#5A7288;font-size:13px;letter-spacing:1px;margin-top:8px">CONSTELLATION OF PERCEPTION · v1.0</p>
+</div>
+
+<!-- Colors -->
+<div class="sec">
+  <h2>品牌色板</h2>
+  <div class="swatches">
+    <div class="swatch">
+      <div class="preview" style="background:#0A0E14"><div class="dot" style="background:#5A7288"></div></div>
+      <div class="info"><div class="name">深空黑</div><div class="val">#0A0E14</div></div>
+    </div>
+    <div class="swatch">
+      <div class="preview" style="background:#0A121A"><div class="dot" style="background:#5A7288"></div></div>
+      <div class="info"><div class="name">卡片底色</div><div class="val">#0A121A</div></div>
+    </div>
+    <div class="swatch">
+      <div class="preview" style="background:#111B25"><div class="dot" style="background:#5A7288"></div></div>
+      <div class="info"><div class="name">浮起色</div><div class="val">#111B25</div></div>
+    </div>
+    <div class="swatch">
+      <div class="preview" style="background:#00C8FF"><div class="dot" style="background:#fff"></div></div>
+      <div class="info"><div class="name">星芒青蓝</div><div class="val">#00C8FF</div></div>
+    </div>
+    <div class="swatch">
+      <div class="preview" style="background:#7C4DFF"><div class="dot" style="background:#fff"></div></div>
+      <div class="info"><div class="name">星云紫</div><div class="val">#7C4DFF</div></div>
+    </div>
+    <div class="swatch">
+      <div class="preview" style="background:#69F0AE"><div class="dot" style="background:#0A0E14"></div></div>
+      <div class="info"><div class="name">荧绿 / 在线</div><div class="val">#69F0AE</div></div>
+    </div>
+    <div class="swatch">
+      <div class="preview" style="background:#FFAB40"><div class="dot" style="background:#0A0E14"></div></div>
+      <div class="info"><div class="name">琥珀 / 警告</div><div class="val">#FFAB40</div></div>
+    </div>
+    <div class="swatch">
+      <div class="preview" style="background:#EF5350"><div class="dot" style="background:#fff"></div></div>
+      <div class="info"><div class="name">星尘红 / 错误</div><div class="val">#EF5350</div></div>
+    </div>
+    <div class="swatch">
+      <div class="preview" style="background:#5A7288"><div class="dot" style="background:#fff"></div></div>
+      <div class="info"><div class="name">星际灰</div><div class="val">#5A7288</div></div>
+    </div>
+    <div class="swatch">
+      <div class="preview" style="background:#E8EDF2"><div class="dot" style="background:#0A0E14"></div></div>
+      <div class="info"><div class="name">主要文字</div><div class="val">#E8EDF2</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Gradients -->
+<div class="sec">
+  <h2>渐变</h2>
+  <div class="grad-row">
+    <div class="grad-bar" style="background:linear-gradient(135deg,#00C8FF,#7C4DFF)"></div>
+    <div class="grad-bar" style="background:linear-gradient(135deg,#0A0E14,#111B25)"></div>
+    <div class="grad-bar" style="background:linear-gradient(135deg,#141E2A,#0A121A)"></div>
+  </div>
+</div>
+
+<!-- Icons -->
+<div class="sec">
+  <h2>产品图标</h2>
+  <div class="icons">
+    <div class="icon-card">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs><linearGradient id="ig1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#00C8FF"/><stop offset="100%" stop-color="#7C4DFF"/></linearGradient>
+        <filter id="if1"><feGaussianBlur stdDeviation="2"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        <filter id="if1s"><feGaussianBlur stdDeviation="1"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+        <!-- Outer orbit rings -->
+        <circle cx="32" cy="32" r="28" stroke="#00C8FF" stroke-width="0.4" opacity="0.12" fill="none" stroke-dasharray="2 8"/>
+        <circle cx="32" cy="32" r="22" stroke="#7C4DFF" stroke-width="0.5" opacity="0.2" fill="none" stroke-dasharray="3 6"/>
+        <circle cx="32" cy="32" r="16" stroke="url(#ig1)" stroke-width="0.7" opacity="0.3" fill="none" stroke-dasharray="4 5"/>
+        <circle cx="32" cy="32" r="10" stroke="#00C8FF" stroke-width="0.5" opacity="0.15" fill="none"/>
+        <!-- Orbital satellite nodes -->
+        <circle cx="60" cy="32" r="1.5" fill="#7C4DFF" opacity="0.6" filter="url(#if1s)"/>
+        <circle cx="32" cy="10" r="1.2" fill="#00C8FF" opacity="0.5" filter="url(#if1s)"/>
+        <circle cx="10" cy="32" r="1" fill="#5A7288" opacity="0.4"/>
+        <circle cx="48" cy="48" r="1.2" fill="#69F0AE" opacity="0.4" filter="url(#if1s)"/>
+        <!-- Connection lines to hub -->
+        <line x1="60" y1="32" x2="32" y2="32" stroke="#7C4DFF" stroke-width="0.5" opacity="0.25"/>
+        <line x1="32" y1="10" x2="32" y2="32" stroke="#00C8FF" stroke-width="0.5" opacity="0.2"/>
+        <!-- Central star -->
+        <circle cx="32" cy="32" r="7" fill="url(#ig1)" opacity="0.08"/>
+        <circle cx="32" cy="32" r="5" fill="#00C8FF" opacity="0.12"/>
+        <circle cx="32" cy="32" r="3.5" fill="#00C8FF" filter="url(#if1)"/>
+        <circle cx="31" cy="31" r="1.2" fill="#fff" opacity="0.5"/>
+      </svg>
+      <div class="label">Gateway</div>
+      <div class="desc">星座枢纽 · 引力点</div>
+    </div>
+    <div class="icon-card">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs><linearGradient id="ig2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#00C8FF"/><stop offset="100%" stop-color="#69F0AE"/></linearGradient>
+        <filter id="if2"><feGaussianBlur stdDeviation="2.5"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        <filter id="if2s"><feGaussianBlur stdDeviation="1"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+        <!-- Outer sensing waves (ring pulses) -->
+        <circle cx="32" cy="32" r="28" stroke="#00C8FF" stroke-width="0.4" opacity="0.08" fill="none"/>
+        <circle cx="32" cy="32" r="22" stroke="#7C4DFF" stroke-width="0.4" opacity="0.12" fill="none" stroke-dasharray="3 6"/>
+        <!-- Major rays (cardinal) -->
+        <line x1="32" y1="3" x2="32" y2="16" stroke="url(#ig2)" stroke-width="1" opacity="0.4" stroke-linecap="round"/>
+        <line x1="32" y1="48" x2="32" y2="61" stroke="url(#ig2)" stroke-width="1" opacity="0.4" stroke-linecap="round"/>
+        <line x1="3" y1="32" x2="16" y2="32" stroke="url(#ig2)" stroke-width="1" opacity="0.4" stroke-linecap="round"/>
+        <line x1="48" y1="32" x2="61" y2="32" stroke="url(#ig2)" stroke-width="1" opacity="0.4" stroke-linecap="round"/>
+        <!-- Minor rays (diagonal) -->
+        <line x1="9.9" y1="9.9" x2="18.5" y2="18.5" stroke="#7C4DFF" stroke-width="0.7" opacity="0.25" stroke-linecap="round"/>
+        <line x1="45.5" y1="45.5" x2="54.1" y2="54.1" stroke="#7C4DFF" stroke-width="0.7" opacity="0.25" stroke-linecap="round"/>
+        <line x1="9.9" y1="54.1" x2="18.5" y2="45.5" stroke="#7C4DFF" stroke-width="0.7" opacity="0.25" stroke-linecap="round"/>
+        <line x1="45.5" y1="18.5" x2="54.1" y2="9.9" stroke="#7C4DFF" stroke-width="0.7" opacity="0.25" stroke-linecap="round"/>
+        <!-- Star glow layers -->
+        <circle cx="32" cy="32" r="10" fill="url(#ig2)" opacity="0.06"/>
+        <circle cx="32" cy="32" r="7" fill="url(#ig2)" opacity="0.1"/>
+        <circle cx="32" cy="32" r="4.5" fill="#00C8FF" filter="url(#if2)"/>
+        <circle cx="32" cy="32" r="2" fill="#fff" opacity="0.6" filter="url(#if2s)"/>
+      </svg>
+      <div class="label">Agent</div>
+      <div class="desc">感知新星 · 发光点</div>
+    </div>
+    <div class="icon-card">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs><linearGradient id="ig3" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#00C8FF"/><stop offset="100%" stop-color="#7C4DFF"/></linearGradient>
+        <filter id="if3"><feGaussianBlur stdDeviation="1.5"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        <filter id="if3s"><feGaussianBlur stdDeviation="0.8"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+        <!-- Hub node -->
+        <circle cx="32" cy="32" r="6" fill="#00C8FF" opacity="0.08"/>
+        <circle cx="32" cy="32" r="3.5" fill="#00C8FF" filter="url(#if3)"/>
+        <circle cx="31" cy="31" r="1" fill="#fff" opacity="0.5" filter="url(#if3s)"/>
+        <!-- Outer constellation nodes -->
+        <circle cx="14" cy="14" r="2.2" fill="#00C8FF" opacity="0.85" filter="url(#if3s)"/>
+        <circle cx="50" cy="16" r="1.8" fill="#7C4DFF" opacity="0.8" filter="url(#if3s)"/>
+        <circle cx="10" cy="46" r="1.6" fill="#7C4DFF" opacity="0.7"/>
+        <circle cx="54" cy="50" r="2" fill="#69F0AE" opacity="0.75" filter="url(#if3s)"/>
+        <circle cx="42" cy="56" r="1.3" fill="#5A7288" opacity="0.5"/>
+        <circle cx="20" cy="54" r="1" fill="#5A7288" opacity="0.4"/>
+        <!-- Constellation lines (major) -->
+        <line x1="14" y1="14" x2="32" y2="32" stroke="url(#ig3)" stroke-width="0.9" opacity="0.5"/>
+        <line x1="50" y1="16" x2="32" y2="32" stroke="#7C4DFF" stroke-width="0.8" opacity="0.4"/>
+        <line x1="10" y1="46" x2="32" y2="32" stroke="#7C4DFF" stroke-width="0.7" opacity="0.3"/>
+        <line x1="32" y1="32" x2="54" y2="50" stroke="#00C8FF" stroke-width="0.9" opacity="0.45"/>
+        <!-- Constellation lines (minor) -->
+        <line x1="14" y1="14" x2="50" y2="16" stroke="#5A7288" stroke-width="0.5" opacity="0.2"/>
+        <line x1="54" y1="50" x2="42" y2="56" stroke="#5A7288" stroke-width="0.5" opacity="0.2"/>
+        <line x1="42" y1="56" x2="20" y2="54" stroke="#5A7288" stroke-width="0.4" opacity="0.15"/>
+        <line x1="10" y1="46" x2="20" y2="54" stroke="#5A7288" stroke-width="0.4" opacity="0.15"/>
+        <!-- Faint cross connections -->
+        <line x1="14" y1="14" x2="54" y2="50" stroke="#00C8FF" stroke-width="0.3" opacity="0.08"/>
+        <line x1="50" y1="16" x2="10" y2="46" stroke="#7C4DFF" stroke-width="0.3" opacity="0.08"/>
+      </svg>
+      <div class="label">Cloud</div>
+      <div class="desc">感知星图 · 全局</div>
+    </div>
+    <div class="icon-card">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs><linearGradient id="ig4" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#00C8FF"/><stop offset="100%" stop-color="#69F0AE"/></linearGradient>
+        <filter id="if4"><feGaussianBlur stdDeviation="1.5"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        <filter id="if4s"><feGaussianBlur stdDeviation="0.8"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+        <!-- Outer lens rings -->
+        <circle cx="32" cy="32" r="28" stroke="#00C8FF" stroke-width="1.2" opacity="0.2"/>
+        <circle cx="32" cy="32" r="26" stroke="#00C8FF" stroke-width="0.6" opacity="0.12" stroke-dasharray="3 5"/>
+        <circle cx="32" cy="32" r="22" stroke="#00C8FF" stroke-width="0.5" opacity="0.08"/>
+        <!-- Crosshair -->
+        <line x1="32" y1="6" x2="32" y2="18" stroke="#00C8FF" stroke-width="0.7" opacity="0.3"/>
+        <line x1="32" y1="46" x2="32" y2="58" stroke="#00C8FF" stroke-width="0.7" opacity="0.3"/>
+        <line x1="6" y1="32" x2="18" y2="32" stroke="#00C8FF" stroke-width="0.7" opacity="0.3"/>
+        <line x1="46" y1="32" x2="58" y2="32" stroke="#00C8FF" stroke-width="0.7" opacity="0.3"/>
+        <!-- Center dot on crosshair -->
+        <circle cx="32" cy="6" r="0.8" fill="#00C8FF" opacity="0.4"/>
+        <circle cx="32" cy="58" r="0.8" fill="#00C8FF" opacity="0.4"/>
+        <circle cx="6" cy="32" r="0.8" fill="#00C8FF" opacity="0.4"/>
+        <circle cx="58" cy="32" r="0.8" fill="#00C8FF" opacity="0.4"/>
+        <!-- Star inside viewfinder -->
+        <circle cx="32" cy="32" r="6" fill="#00C8FF" opacity="0.06"/>
+        <circle cx="32" cy="32" r="4" fill="#00C8FF" opacity="0.1"/>
+        <circle cx="32" cy="32" r="3" fill="url(#ig4)" filter="url(#if4)"/>
+        <circle cx="31" cy="31" r="1" fill="#fff" opacity="0.5" filter="url(#if4s)"/>
+        <!-- Corner brackets (L-shapes) -->
+        <line x1="7" y1="7" x2="7" y2="17" stroke="url(#ig4)" stroke-width="1.8" opacity="0.5" stroke-linecap="round"/>
+        <line x1="7" y1="7" x2="17" y2="7" stroke="url(#ig4)" stroke-width="1.8" opacity="0.5" stroke-linecap="round"/>
+        <line x1="57" y1="7" x2="57" y2="17" stroke="url(#ig4)" stroke-width="1.8" opacity="0.5" stroke-linecap="round"/>
+        <line x1="57" y1="7" x2="47" y2="7" stroke="url(#ig4)" stroke-width="1.8" opacity="0.5" stroke-linecap="round"/>
+        <line x1="7" y1="57" x2="7" y2="47" stroke="url(#ig4)" stroke-width="1.8" opacity="0.5" stroke-linecap="round"/>
+        <line x1="7" y1="57" x2="17" y2="57" stroke="url(#ig4)" stroke-width="1.8" opacity="0.5" stroke-linecap="round"/>
+        <line x1="57" y1="57" x2="57" y2="47" stroke="url(#ig4)" stroke-width="1.8" opacity="0.5" stroke-linecap="round"/>
+        <line x1="57" y1="57" x2="47" y2="57" stroke="url(#ig4)" stroke-width="1.8" opacity="0.5" stroke-linecap="round"/>
+        <!-- Corner end caps -->
+        <circle cx="7" cy="7" r="1" fill="#00C8FF" opacity="0.4"/>
+        <circle cx="57" cy="7" r="1" fill="#00C8FF" opacity="0.4"/>
+        <circle cx="7" cy="57" r="1" fill="#00C8FF" opacity="0.4"/>
+        <circle cx="57" cy="57" r="1" fill="#00C8FF" opacity="0.4"/>
+      </svg>
+      <div class="label">Viewer</div>
+      <div class="desc">观星镜 · 发现</div>
+    </div>
+  </div>
+</div>
+
+<!-- UI Components -->
+<div class="sec">
+  <h2>UI 组件</h2>
+  <div class="comp-grid">
+    <div class="comp-card">
+      <h3>Buttons</h3>
+      <div class="comp-row">
+        <button class="btn btn-primary">主按钮</button>
+        <button class="btn btn-secondary">次要</button>
+        <button class="btn btn-ghost">幽灵</button>
+        <button class="btn btn-danger">危险</button>
+      </div>
+    </div>
+    <div class="comp-card">
+      <h3>Badges</h3>
+      <div class="comp-row">
+        <span class="badge badge-online">● 在线</span>
+        <span class="badge badge-offline">● 离线</span>
+        <span class="badge badge-pushing">● 推流中</span>
+      </div>
+      <div class="comp-row" style="margin-top:8px">
+        <span class="tag tag-gray">RTSP</span>
+        <span class="tag tag-cyan">HLS</span>
+        <span class="tag tag-purple">WebRTC</span>
+      </div>
+    </div>
+    <div class="comp-card">
+      <h3>Input</h3>
+      <input type="text" placeholder="设备名称..." value="门口摄像头">
+    </div>
+    <div class="comp-card">
+      <h3>Card Preview</h3>
+      <div style="background:#0A121A;border:1px solid #1A2A3A;border-radius:6px;overflow:hidden">
+        <div style="aspect-ratio:16/9;background:#060A0F;display:flex;align-items:center;justify-content:center;font-size:24px;color:#3A4A5A">🎥</div>
+        <div style="padding:8px 10px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:12px;font-weight:500">门口摄像头</span>
+          <span class="badge badge-online">● 在线</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Typography -->
+<div class="sec">
+  <h2>字体</h2>
+  <div class="type-grid">
+    <div class="type-card">
+      <div class="type-display">NovaSense</div>
+      <div style="font-size:12px;color:#5A7288">Inter Bold 700 · Display</div>
+    </div>
+    <div class="type-card">
+      <div class="type-display-light">感知网络</div>
+      <div style="font-size:12px;color:#5A7288">Inter Light 300 · Accent</div>
+    </div>
+    <div class="type-card">
+      <div class="type-body">主要文字 — 设备列表、菜单、正文内容</div>
+      <div style="font-size:12px;color:#5A7288">Inter Regular 400 · Body</div>
+    </div>
+    <div class="type-card">
+      <div class="type-mono">constellation_of_perception</div>
+      <div style="font-size:12px;color:#5A7288;margin-top:4px">JetBrains Mono · Code/Metric</div>
+    </div>
+  </div>
+</div>
+
+<!-- Brand Story -->
+<div class="sec">
+  <h2>品牌故事</h2>
+  <div style="padding:24px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:linear-gradient(135deg,#0A121A,#111B25)">
+    <p style="font-size:14px;color:#8AA0B8;line-height:1.8">
+      每一台旧手机、每一个 USB 摄像头、未来你加的每一个传感器，都像一颗星星。<br>
+      一颗是暗的。当你把几百颗星星连在一起——它们就构成了一个<strong style="color:#00C8FF">感知星座</strong>。
+    </p>
+    <p style="font-size:14px;color:#8AA0B8;line-height:1.8;margin-top:12px">
+      <span style="color:#5A7288">以前这家零售店装的是 4 个摄像头，叫"监控"。</span><br>
+      现在他装了 4 台旧手机 + 2 个 USB 摄像头 + 1 个温湿度传感器——<br>
+      <span style="color:#7C4DFF;font-weight:500">这不是监控，这是 NovaSense。</span>
+    </p>
+    <p style="font-size:13px;color:#5A7288;margin-top:16px;border-top:1px solid rgba(255,255,255,0.06);padding-top:16px">
+      起点是一台旧手机，终点是一个感知网络。
+    </p>
+  </div>
+</div>
+
+</div>
+
+</body>
+</html>
