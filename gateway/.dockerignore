@@ -2,7 +2,7 @@
 .gitignore
 *.md
 data/
-bin/
+bin/video-stream-manager
 backend/video-stream-manager
 venv/
 images/

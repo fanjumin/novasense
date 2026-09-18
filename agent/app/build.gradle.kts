@@ -5,15 +5,15 @@ plugins {
 }
 
 android {
-    namespace = "com.netcam"
+    namespace = "com.novasense.agent"
     compileSdk = 36
 
     defaultConfig {
         applicationId = "com.novasense.agent"
         minSdk = 21
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 84
+        versionName = "0.8.4"
     }
 
     buildTypes {

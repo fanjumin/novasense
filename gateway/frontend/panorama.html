@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>鱼眼去畸变查看器 · NovaSense</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#05070c;overflow:hidden;font-family:"PingFang SC","Microsoft YaHei",sans-serif;color:#c9d6e3}
+  #pano{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+  #pano.drag{cursor:grabbing}
+  #hud{position:fixed;top:14px;left:14px;z-index:10;background:rgba(8,14,22,.8);border:1px solid #1e2d3d;border-radius:10px;padding:10px 14px;font-size:13px;line-height:1.7;pointer-events:none}
+  #hud b{color:#40c4ff}
+  #hud .hint{color:#5a7288;font-size:11px}
+  #info{position:fixed;top:14px;right:14px;z-index:10;background:rgba(8,14,22,.8);border:1px solid #1e2d3d;border-radius:10px;padding:8px 12px;font-size:12px;text-align:right;pointer-events:none}
+  #info .deg{color:#69f0ae;font-variant-numeric:tabular-nums}
+  #loading{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#05070c;font-size:14px;color:#8aa0b8;gap:12px}
+  #loading .spin{width:34px;height:34px;border:3px solid #1e2d3d;border-top-color:#40c4ff;border-radius:50%;animation:r 1s linear infinite}
+  @keyframes r{to{transform:rotate(360deg)}}
+  #err{color:#ef5350;font-size:13px;display:none;max-width:420px;text-align:center;line-height:1.6}
+  #reset{position:fixed;bottom:18px;right:18px;z-index:10;background:rgba(64,196,255,.12);border:1px solid #40c4ff;color:#40c4ff;border-radius:8px;padding:8px 14px;font-size:12px;cursor:pointer}
+  #reset:hover{background:rgba(64,196,255,.22)}
+  #v{display:none}
+</style>
+</head>
+<body>
+<canvas id="pano"></canvas>
+<div id="hud">
+  <div>设备：<b id="devName">…</b> · 等立体角去畸变</div>
+  <div class="hint">拖动调视角 · 滚轮缩放视野 · 双击复位 · 移动端单指拖动</div>
+</div>
+<div id="info">视角 <span class="deg" id="deg">0° / 0°</span> · 视野 <span class="deg" id="fovShow">95°</span></div>
+<div id="reset" onclick="resetView()">⟲ 复位</div>
+<div id="loading"><div class="spin"></div><div>正在连接视频流…</div><div id="err"></div></div>
+<video id="v" muted autoplay playsinline></video>
+
+<script src="/hls.min.js"></script>
+<script>
+(function(){
+  "use strict";
+  var qs = new URLSearchParams(location.search);
+  var DEVICE_ID = qs.get('id') || 'b8c22014';
+  var SRC = '/hls/live/' + DEVICE_ID + '/index.m3u8';
+
+  // ---- 鱼眼镜头几何（已实测）----
+  var CX = 976, CY = 538, R = 538;      // 鱼眼圆心/半径（1920x1080）
+  var DFOV = 180;                        // 镜头视场角（雄迈 180° 鱼眼）
+  var THETA_MAX = Math.PI * DFOV / 360;  // 半视场 90°
+
+  // ---- 状态 ----
+  var yaw = 0, pitch = 0, fov = 95;      // 度
+  var dragging = false, lastX = 0, lastY = 0;
+  var srcW = 1920, srcH = 1080;
+  var OUT_W = 1280, OUT_H = 720;
+  var MAX_UPSCALE = 1.5;                 // 允许的超采样放大上限（超出则输出匹配源像素）
+
+  var canvas = document.getElementById('pano');
+  var ctx = canvas.getContext('2d', {alpha:false});
+  var srcCanvas = document.createElement('canvas');
+  var srcCtx = srcCanvas.getContext('2d', {willReadFrequently:true});
+  var video = document.getElementById('v');
+  var loading = document.getElementById('loading');
+  var errEl = document.getElementById('err');
+  var degEl = document.getElementById('deg');
+  var fovEl = document.getElementById('fovShow');
+  document.getElementById('devName').textContent = DEVICE_ID;
+
+  // ---- 输出分辨率：匹配实际用到的鱼眼源像素，避免无效超放大 ----
+  function computeOutSize(){
+    var needW = window.innerWidth, needH = window.innerHeight;
+    // fov 是垂直视野；16:9 时水平半角更大
+    var halfV = fov * Math.PI / 360;
+    var halfH = Math.atan(Math.tan(halfV) * 16 / 9);
+    // 水平边缘入射角 = halfH，对应鱼眼半径
+    var rMax = R * Math.sin(halfH/2) / Math.sin(THETA_MAX/2);
+    var avail = 2 * rMax;                 // 源可用像素宽
+    var capW = Math.max(320, Math.round(avail * MAX_UPSCALE));
+    OUT_W = Math.min(Math.round(needW), capW);
+    OUT_H = Math.round(OUT_W * 9 / 16);
+  }
+
+  // ---- LUT：输出像素 → 鱼眼源坐标（等立体角逆映射）----
+  // 每像素 3 个 float: [sx, sy, valid]
+  var lut = null;
+  function buildLUT(){
+    var w = OUT_W, h = OUT_H;
+    lut = new Float32Array(w * h * 3);
+    var aspect = w / h;
+    var tanHalfV = Math.tan(fov * Math.PI / 360);
+    var tanHalfH = tanHalfV * aspect;
+    var yawR = yaw * Math.PI / 180, pitchR = pitch * Math.PI / 180;
+    var cy = Math.cos(yawR), sy = Math.sin(yawR);
+    var cp = Math.cos(pitchR), sp = Math.sin(pitchR);
+    var i = 0;
+    for (var j = 0; j < h; j++){
+      var vv = 1 - 2 * (j + 0.5) / h;            // 上->下
+      for (var k = 0; k < w; k++){
+        var uu = 2 * (k + 0.5) / w - 1;          // 左->右
+        // 本地方向（看向 +z）
+        var lx = uu * tanHalfH, ly = vv * tanHalfV, lz = 1;
+        // pitch 绕 x
+        var y1 = ly * cp - lz * sp, z1 = ly * sp + lz * cp;
+        // yaw 绕 y
+        var x2 = lx * cy + z1 * sy, z2 = -lx * sy + z1 * cy;
+        // 方向 → 入射角 θ / 方位角 φ
+        var theta = Math.atan2(Math.sqrt(x2*x2 + y1*y1), z2);
+        var phi = Math.atan2(y1, x2);
+        if (theta > THETA_MAX){ lut[i] = -1; lut[i+1] = -1; lut[i+2] = 0; }
+        else {
+          // 等立体角：r = R·sin(θ/2)/sin(θ_max/2)
+          var rr = R * Math.sin(theta/2) / Math.sin(THETA_MAX/2);
+          var sx = CX + rr * Math.cos(phi);
+          var syy = CY + rr * Math.sin(phi);
+          lut[i] = sx / srcW; lut[i+1] = syy / srcH; lut[i+2] = 1;
+        }
+        i += 3;
+      }
+    }
+  }
+
+  // ---- 双三次 Catmull-Rom 插值权重 ----
+  function cubicW(d){ // d = 到采样点距离, [0,2)
+    if (d < 1) return (1.5*d - 2.5)*d*d + 1;
+    return ((-0.5*d + 2.5)*d - 4)*d + 2;
+  }
+
+  // ---- 渲染一帧 ----
+  function draw(force){
+    if (!lut) return;
+    if (video.readyState < 2){
+      ctx.fillStyle = '#05070c';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+    if (srcCanvas.width !== srcW || srcCanvas.height !== srcH){
+      srcCanvas.width = srcW; srcCanvas.height = srcH;
+    }
+    srcCtx.drawImage(video, 0, 0, srcW, srcH);
+    var srcImg;
+    try { srcImg = srcCtx.getImageData(0, 0, srcW, srcH); }
+    catch(e){ return; }
+    var sdata = srcImg.data, sw = srcW, sh = srcH;
+
+    var off = document.createElement('canvas');
+    off.width = OUT_W; off.height = OUT_H;
+    var octx = off.getContext('2d');
+    var outImg = octx.createImageData(OUT_W, OUT_H);
+    var odata = outImg.data;
+    var L = lut, n = OUT_W * OUT_H, li = 0;
+    for (var p = 0; p < n; p++){
+      if (L[li+2] === 0){ odata[p*4+3] = 0; li += 3; continue; }  // 视野外透明黑
+      var sx = L[li] * (sw - 1), sy = L[li+1] * (sh - 1);
+      li += 3;
+      var x0 = (sx|0) - 1, y0 = (sy|0) - 1;
+      if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0;
+      if (x0 > sw-4) x0 = sw-4; if (y0 > sh-4) y0 = sh-4;
+      // 双三次 4x4
+      var r0=0, g0=0, b0=0;
+      for (var jj = 0; jj < 4; jj++){
+        var wy = cubicW(Math.abs(sy - (y0+jj)));
+        var row = (y0+jj)*sw;
+        for (var kk = 0; kk < 4; kk++){
+          var wx = cubicW(Math.abs(sx - (x0+kk)));
+          var w = wy*wx;
+          var idx = (row + x0+kk)*4;
+          r0 += sdata[idx]*w; g0 += sdata[idx+1]*w; b0 += sdata[idx+2]*w;
+        }
+      }
+      var o = p*4;
+      odata[o] = r0>255?255:(r0<0?0:r0);
+      odata[o+1] = g0>255?255:(g0<0?0:g0);
+      odata[o+2] = b0>255?255:(b0<0?0:b0);
+      odata[o+3] = 255;
+    }
+    octx.putImageData(outImg, 0, 0);
+    var dispW = window.innerWidth, dispH = window.innerHeight;
+    var scale = Math.min(dispW/OUT_W, dispH/OUT_H);
+    var dw = OUT_W*scale, dh = OUT_H*scale;
+    ctx.fillStyle = '#05070c';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(off, (dispW-dw)/2, (dispH-dh)/2, dw, dh);
+    degEl.textContent = Math.round(((yaw%360)+360)%360) + '° / ' + Math.round(pitch) + '°';
+    fovEl.textContent = Math.round(fov) + '°';
+  }
+
+  // ---- 交互 ----
+  function dragStart(e){ dragging = true; canvas.classList.add('drag'); lastX = e.clientX; lastY = e.clientY; }
+  function dragMove(e){
+    if (!dragging) return;
+    var dx = e.clientX - lastX, dy = e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    yaw -= dx * 0.22; pitch += dy * 0.22;
+    if (pitch > 85) pitch = 85; if (pitch < -85) pitch = -85;
+    buildLUT(); draw();
+  }
+  function dragEnd(){ dragging = false; canvas.classList.remove('drag'); }
+  canvas.addEventListener('mousedown', dragStart);
+  window.addEventListener('mousemove', dragMove);
+  window.addEventListener('mouseup', dragEnd);
+  canvas.addEventListener('wheel', function(e){
+    e.preventDefault();
+    fov *= (e.deltaY > 0 ? 1.08 : 0.92);
+    if (fov < 30) fov = 30; if (fov > 150) fov = 150;
+    computeOutSize(); buildLUT(); draw();
+  }, {passive:false});
+  canvas.addEventListener('dblclick', resetView);
+  canvas.addEventListener('touchstart', function(e){ if (e.touches.length === 1) dragStart(e.touches[0]); }, {passive:true});
+  canvas.addEventListener('touchmove', function(e){ if (e.touches.length === 1){ e.preventDefault(); dragMove(e.touches[0]); } }, {passive:false});
+  canvas.addEventListener('touchend', dragEnd);
+  function resetView(){ yaw = 0; pitch = 0; fov = 95; computeOutSize(); buildLUT(); draw(); }
+
+  function resize(){
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(window.innerWidth * dpr);
+    canvas.height = Math.round(window.innerHeight * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    computeOutSize();
+    buildLUT(); draw();
+  }
+  window.addEventListener('resize', resize);
+
+  // ---- HLS ----
+  function onFrame(){ draw(); requestAnimationFrame(onFrame); }
+  function startVideo(){
+    if (Hls.isSupported()){
+      var hls = new Hls({liveDurationInfinity:true, lowLatencyMode:true, liveSyncDurationCount:2});
+      hls.loadSource(SRC);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, function(){
+        var m = hls.levels && hls.levels[0];
+        if (m && m.width && m.height){ srcW = m.width; srcH = m.height; }
+        video.play().catch(function(){});
+        loading.style.display = 'none';
+      });
+      hls.on(Hls.Events.ERROR, function(ev, data){
+        if (data.fatal){
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+          else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+          else showErr('流错误：' + (data.details||''));
+        }
+      });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')){
+      video.src = SRC;
+      video.addEventListener('loadedmetadata', function(){ srcW=video.videoWidth; srcH=video.videoHeight; loading.style.display='none'; });
+    } else showErr('浏览器不支持 HLS 播放');
+  }
+  function showErr(msg){
+    errEl.textContent = msg;
+    errEl.style.display = 'block';
+    loading.querySelector('div:nth-child(2)').style.display = 'none';
+  }
+
+  resize();
+  startVideo();
+  requestAnimationFrame(onFrame);
+})();
+</script>
+</body>
+</html>

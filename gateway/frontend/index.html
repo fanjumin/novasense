@@ -3,17 +3,30 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔭</text></svg>">
 <script defer src="/hls.min.js"></script>
-<title>视频流管理平台</title>
+<title>NovaSense 网关</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #0a0e14; color: #d0d8e0; min-height: 100vh; }
-.header { background: linear-gradient(135deg, #141e2a 0%, #0a121a 100%); padding: 12px 16px; border-bottom: 1px solid #1e2d3d; display: flex; align-items: center; gap: 12px; }
-.header h1 { font-size: 17px; font-weight: 600; color: #00c8ff; }
-.tabs { display: flex; gap: 1px; background: #0d151f; padding: 0 12px; border-bottom: 1px solid #1e2d3d; }
-.tab { padding: 9px 14px; cursor: pointer; font-size: 13px; color: #6b8299; border-bottom: 2px solid transparent; }
-.tab:hover { color: #c0d0e0; background: #141e2a; }
-.tab.active { color: #00c8ff; border-bottom-color: #00c8ff; }
+.app { display: flex; min-height: 100vh; }
+.sidebar { width: 200px; background: #080B10; border-right: 1px solid rgba(255,255,255,0.04); padding: 0; display: flex; flex-direction: column; flex-shrink: 0; }
+.sidebar-logo { display: flex; align-items: center; gap: 8px; padding: 16px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.sidebar-logo svg { width: 24px; height: 24px; flex-shrink: 0; }
+.sidebar-logo span { font-size: 15px; font-weight: 700; color: #e8edf2; }
+.sidebar-nav { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; flex: 1; }
+.nav-item { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 6px; font-size: 13px; font-weight: 500; color: #5a7288; text-decoration: none; transition: all .12s; cursor: pointer; }
+.nav-item:hover { color: #8aa0b8; background: rgba(255,255,255,0.03); }
+.nav-item.active { color: #00c8ff; background: rgba(0,200,255,0.08); }
+.nav-ico { width: 18px; text-align: center; font-size: 14px; opacity: 0.6; }
+.nav-item.active .nav-ico { opacity: 1; }
+.sidebar-bottom { padding: 12px 14px; border-top: 1px solid rgba(255,255,255,0.04); display: flex; gap: 12px; font-size: 11px; color: #5a7288; }
+.sidebar-status span { color: #8aa0b8; font-weight: 600; }
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.topbar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); background: #0a0e14; flex-shrink: 0; }
+.topbar-title { font-size: 16px; font-weight: 600; color: #e8edf2; }
+.topbar-info { font-size: 12px; color: #5a7288; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .content { padding: 12px; display: none; }
 .content.active { display: block; }
 .live-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -142,25 +155,46 @@ a { color:#00c8ff; text-decoration:none; }
 </style>
 </head>
 <body>
-<div class="header">
-  <h1>NetCam Center</h1>
-  <span style="font-size:12px;color:#5a7288" id="headerStatus">加载中...</span>
-  <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
-    <span style="font-size:11px;color:#3a5a6a">192.0.2.107:8899</span>
-    <button class="btn btn-xs btn-outline" onclick="logout()" style="font-size:11px;padding:2px 8px">退出</button>
-  </span>
+<div class="app">
+<div class="sidebar">
+  <div class="sidebar-logo">
+    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="20" cy="28" r="2.5" fill="#00C8FF"/>
+      <circle cx="44" cy="28" r="2" fill="#7C4DFF" opacity="0.8"/>
+      <circle cx="32" cy="48" r="1.5" fill="#5A7288" opacity="0.6"/>
+      <line x1="20" y1="28" x2="44" y2="28" stroke="#00C8FF" stroke-width="0.8" opacity="0.5"/>
+      <line x1="20" y1="28" x2="32" y2="48" stroke="#7C4DFF" stroke-width="0.6" opacity="0.3"/>
+      <line x1="44" y1="28" x2="32" y2="48" stroke="#5A7288" stroke-width="0.6" opacity="0.3"/>
+      <circle cx="32" cy="28" r="4" fill="#00C8FF"/>
+      <circle cx="32" cy="28" r="6" fill="#00C8FF" opacity="0.12"/>
+    </svg>
+    <span>NovaSense</span>
+  </div>
+  <div class="sidebar-nav">
+    <a href="#" class="nav-item active" data-tab="live"><span class="nav-ico">◆</span> 实时画面</a>
+    <a href="#" class="nav-item" data-tab="recordings"><span class="nav-ico">◈</span> 录像回放</a>
+    <a href="#" class="nav-item" data-tab="snapshots"><span class="nav-ico">◇</span> 抓拍</a>
+    <a href="#" class="nav-item" data-tab="director"><span class="nav-ico">◎</span> 导播</a>
+    <a href="#" class="nav-item" data-tab="motion"><span class="nav-ico">○</span> 运动检测</a>
+    <a href="#" class="nav-item" data-tab="faces"><span class="nav-ico">◉</span> 人脸</a>
+    <a href="#" class="nav-item" data-tab="discover"><span class="nav-ico">⊙</span> 设备发现</a>
+        <a href="#" class="nav-item" data-tab="ruview"><span class="nav-ico">◈</span> WiFi 感知</a>
+<a href="#" class="nav-item" data-tab="status"><span class="nav-ico">⊡</span> 状态</a>
+  </div>
+  <div class="sidebar-bottom">
+    <div class="sidebar-status"><span id="sidebarOnline">0</span> 在线</div>
+    <div class="sidebar-status"><span id="sidebarOffline">0</span> 离线</div>
+  </div>
 </div>
-<div class="tabs">
-  <div class="tab active" onclick="switchTab('live')">📺 监控</div>
-  <div class="tab" onclick="switchTab('recordings')">💾 录像</div>
-  <div class="tab" onclick="switchTab('schedule')">⏰ 定时</div>
-  <div class="tab" onclick="switchTab('snapshots')">📸 抓拍</div>
-  <div class="tab" onclick="switchTab('director')">🎬 导播</div>
-  <div class="tab" onclick="switchTab('motion')">🏃 运动</div>
-  <div class="tab" onclick="switchTab('faces')">👤 人脸</div>
-  <div class="tab" onclick="switchTab('discover')">📡 发现</div>
-  <div class="tab" onclick="switchTab('status')">📊 状态</div>
-</div>
+<div class="main">
+  <div class="topbar">
+    <span class="topbar-title">实时画面</span>
+    <span class="topbar-info" id="headerStatus">加载中...</span>
+    <span class="topbar-right">
+      <span style="font-size:11px;color:#3a5a6a">192.0.2.107:8899</span>
+      <button class="btn btn-xs btn-outline" onclick="logout()" style="font-size:11px;padding:2px 8px">退出</button>
+    </span>
+  </div>
 
 <!-- LIVE -->
 <div id="tab-live" class="content active">
@@ -324,6 +358,207 @@ a { color:#00c8ff; text-decoration:none; }
 </div>
 
 <!-- STATUS -->
+<!-- RUViEW (WiFi CSI native integration) -->
+<div id="tab-ruview" class="content">
+  <div class="stats">
+    <div class="stat-card"><div class="val" id="rvSource">-</div><div class="lbl">数据源</div></div>
+    <div class="stat-card"><div class="val" id="rvPersons">-</div><div class="lbl">检测人数</div></div>
+    <div class="stat-card"><div class="val" id="rvPresence">-</div><div class="lbl">存在</div></div>
+    <div class="stat-card"><div class="val" id="rvTrust">-</div><div class="lbl">信任等级</div></div>
+  </div>
+  <div class="card" style="margin-bottom:12px;position:relative;">
+    <h3 style="margin-top:0;">3D 空间感知 <span style="color:#5a7288;font-size:12px;font-weight:400;">拖拽旋转 · 滚轮缩放 · 蓝色=弱 / 红色=强</span></h3>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+      <span style="font-size:12px;color:#5a7288;">模式</span>
+      <button id="rv3dMode" onclick="rv3dToggleMode()" style="background:#13243a;color:#e8edf2;border:1px solid #234a66;border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer;">回放</button>
+      <button id="rv3dPlay" onclick="rv3dTogglePlay()" style="background:#13243a;color:#e8edf2;border:1px solid #234a66;border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer;">▶ 播放</button>
+      <input id="rv3dSeek" type="range" min="0" max="1000" value="1000" style="flex:1;min-width:120px;accent-color:#00c8ff;cursor:pointer;" oninput="rv3dSeekTo(this.value)">
+      <span id="rv3dTime" style="font-size:11px;color:#5a7288;width:88px;text-align:right;">实时</span>
+      <button onclick="rv3dReset()" style="background:#13243a;color:#e8edf2;border:1px solid #234a66;border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer;">清空</button>
+    </div>
+    <div id="rv3dDiag" style="font-size:11px;color:#5a7288;margin-bottom:6px;">3D 初始化中…</div>
+    <div id="rv3d" style="width:100%;height:380px;position:relative;background:#0d141e;border-radius:8px;overflow:hidden;"></div>
+  </div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+    <div class="card" style="flex:1;min-width:260px;">
+      <h3>房间感知 <span style="color:#00c8ff;font-size:12px;font-weight:400;" id="rvRoomClass">-</span></h3>
+      <div style="font-size:13px;color:#8aa0b8;line-height:2;">
+        活动等级: <span style="color:#e8edf2;" id="rvMotionLevel">-</span><br>
+        置信度: <span style="color:#e8edf2;" id="rvConfidence">-</span>
+      </div>
+    </div>
+    <div class="card" style="flex:1;min-width:260px;">
+      <h3>生理特征</h3>
+      <div style="font-size:13px;color:#8aa0b8;line-height:2;">
+        呼吸带功率: <span style="color:#e8edf2;" id="rvBreath">-</span><br>
+        主导频率: <span style="color:#e8edf2;" id="rvDominant">-</span> Hz<span style="color:#5a7288;font-size:11px;">（呼吸≈0.2-0.5Hz）</span><br>
+        运动带功率: <span style="color:#e8edf2;" id="rvMotion">-</span>
+      </div>
+    </div>
+    <div class="card" style="flex:1;min-width:260px;">
+      <h3>节点</h3>
+      <div style="font-size:13px;color:#8aa0b8;line-height:2;">
+        RSSI: <span style="color:#e8edf2;" id="rvRssi">-</span> dBm<br>
+        CSI 帧率: <span style="color:#e8edf2;" id="rvFps">-</span> fps<br>
+        最近帧: <span style="color:#e8edf2;" id="rvLast">-</span>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="font-size:12px;color:#5a7288;">
+    <span id="rvStatusLine">连接 RuView 数据中…</span>
+  </div>
+</div>
+
+<script>
+(function() {
+  var wsConn = null, wsTimer = null;
+  function rv$(id){ return document.getElementById(id); }
+  function fmtTrust(cls){ if(!cls) return '待见证'; return cls; }
+
+  function renderStatus(st) {
+    if(!st) return;
+    rv$('rvSource').textContent = st.source || '-';
+    rv$('rvTrust').textContent = fmtTrust(st.trust && st.trust.effective_class);
+    if (st.source) {
+      rv$('rvStatusLine').textContent = '数据源: ' + st.source + (st.source_state ? ' (' + st.source_state + ')' : '');
+    }
+  }
+
+  function renderFrame(m) {
+    if (!m || m.type !== 'sensing_update') return;
+    var cls = m.classification || {};
+    var feat = m.features || {};
+    var nodes = m.nodes || [];
+    rv$('rvPersons').textContent = (m.estimated_persons !== undefined) ? m.estimated_persons : '-';
+    rv$('rvPresence').textContent = (cls.presence !== undefined) ? (cls.presence ? '检测到' : '空闲') : '-';
+    rv$('rvMotionLevel').textContent = cls.motion_level || '-';
+    rv$('rvConfidence').textContent = (cls.confidence !== undefined) ? (cls.confidence * 100).toFixed(0) + '%' : '-';
+    rv$('rvBreath').textContent = (feat.breathing_band_power !== undefined) ? feat.breathing_band_power.toFixed(3) : '-';
+    rv$('rvDominant').textContent = (feat.dominant_freq_hz !== undefined) ? feat.dominant_freq_hz.toFixed(3) : '-';
+    rv$('rvMotion').textContent = (feat.motion_band_power !== undefined) ? feat.motion_band_power.toFixed(2) : '-';
+    if (nodes.length) {
+      rv$('rvRssi').textContent = nodes[0].rssi_dbm !== undefined ? nodes[0].rssi_dbm : '-';
+      rv$('rvFps').textContent = nodes[0].frame_rate_hz !== undefined ? nodes[0].frame_rate_hz.toFixed(1) : '-';
+    }
+    var ts = m.timestamp;
+    if (ts) {
+      var d = new Date(ts * 1000);
+      rv$('rvLast').textContent = d.toLocaleTimeString() + '.' + String(d.getMilliseconds()).padStart(3,'0');
+    }
+    if (m.room_inference) {
+      rv$('rvRoomClass').textContent = m.room_inference.classification || '-';
+    }
+    if (window.__rv3d) { try { window.__rv3d.update(m); } catch(e){} }
+  }
+
+  function connect() {
+    var proto = (location.protocol === 'https:') ? 'wss://' : 'ws://';
+    try { wsConn = new WebSocket(proto + location.host + '/api/ruview/ws'); }
+    catch(e) { rv$('rvStatusLine').textContent = 'WS 连接失败: ' + e.message; return; }
+    wsConn.onopen = function(){ rv$('rvStatusLine').textContent = '实时感知流已连接'; };
+    wsConn.onmessage = function(ev){
+      try {
+        var m = JSON.parse(ev.data);
+        rvBufferPush(m);
+        if (rv3dState.mode === 'live') renderFrame(m);
+      }
+      catch(e) { /* ignore partial */ }
+    };
+    wsConn.onclose = function(){ rv$('rvStatusLine').textContent = '实时流断开，重连中…'; clearTimeout(wsTimer); wsTimer = setTimeout(connect, 3000); };
+    wsConn.onerror = function(){ try{ wsConn.close(); }catch(e){} };
+  }
+
+  // 状态轮询（5s）
+  setInterval(function(){
+    fetch('/api/ruview/status', {headers:{'Accept':'application/json'}})
+      .then(function(r){ return r.json(); })
+      .then(renderStatus)
+      .catch(function(){ rv$('rvStatusLine').textContent = 'RuView 状态不可达'; });
+  }, 5000);
+  fetch('/api/ruview/status', {headers:{'Accept':'application/json'}})
+    .then(function(r){ return r.json(); }).then(renderStatus).catch(function(){});
+
+  // 常驻 WS 连接（不依赖 switchTab，避免被后续 wrap 覆盖）
+  setTimeout(function(){ if (!wsConn || wsConn.readyState !== WebSocket.OPEN) connect(); }, 800);
+
+  // ---- 3D 自诊断：把 JS 错误显示到诊断行 ----
+  window.addEventListener('error', function(e){
+    var d = document.getElementById('rv3dDiag');
+    if (d) { d.style.color = '#ff6b6b'; d.textContent = 'JS 错误: ' + (e.message || e.type || 'unknown'); }
+  });
+  if (!window.__rv3d) {
+    setTimeout(function(){
+      var d = document.getElementById('rv3dDiag');
+      if (d && !window.__rv3d) { d.style.color = '#ffcc00'; d.textContent = '3D 脚本未加载（检查 /js/ruview3d.js）'; }
+    }, 3000);
+  }
+
+  // ---- 真实帧环形缓冲（60s）+ 回放仿真 ----
+  var RVBUF_MAX = 60 * 30;            /* 60s @30fps */
+  var rvBuf = [];
+  var rv3dState = { mode: 'live', playing: false, cursor: 0, raf: null };
+  function rvBufferPush(m) {
+    if (!m || m.type !== 'sensing_update' || !m.timestamp) return;
+    rvBuf.push({ t: m.timestamp, msg: m });
+    while (rvBuf.length > RVBUF_MAX) rvBuf.shift();
+  }
+  function rv3dFrameAt(idx) {
+    var e = rvBuf[idx];
+    if (e && window.__rv3d) { try { window.__rv3d.update(e.msg); } catch(err){} }
+  }
+  function rv3dLoop() {
+    if (rv3dState.mode !== 'replay') return;
+    if (rv3dState.playing && rvBuf.length) {
+      rv3dState.cursor += 1;
+      if (rv3dState.cursor >= rvBuf.length) rv3dState.cursor = 0;
+      rv3dFrameAt(rv3dState.cursor);
+      var seek = document.getElementById('rv3dSeek');
+      if (seek) seek.value = Math.round(rv3dState.cursor / Math.max(1, rvBuf.length - 1) * 1000);
+      var tEl = document.getElementById('rv3dTime');
+      if (tEl) {
+        var age = Math.max(0, (rvBuf[rvBuf.length-1].t - rvBuf[rv3dState.cursor].t));
+        tEl.textContent = '回放 -' + age.toFixed(0) + 's';
+      }
+    }
+    rv3dState.raf = requestAnimationFrame(rv3dLoop);
+  }
+  window.rv3dToggleMode = function() {
+    if (rv3dState.mode === 'live') {
+      rv3dState.mode = 'replay';
+      rv3dState.playing = false;
+      rv3dState.cursor = rvBuf.length ? Math.max(0, rvBuf.length - 2) : 0;
+      var b = document.getElementById('rv3dMode'); if (b) b.textContent = '实时';
+      var p = document.getElementById('rv3dPlay'); if (p) p.textContent = '▶ 播放';
+      if (rvBuf.length) { rv3dFrameAt(rv3dState.cursor); }
+      rv3dState.raf = requestAnimationFrame(rv3dLoop);
+    } else {
+      rv3dState.mode = 'live';
+      rv3dState.playing = false;
+      if (rv3dState.raf) { cancelAnimationFrame(rv3dState.raf); rv3dState.raf = null; }
+      var b = document.getElementById('rv3dMode'); if (b) b.textContent = '回放';
+      var p = document.getElementById('rv3dPlay'); if (p) p.textContent = '▶ 播放';
+      var tEl = document.getElementById('rv3dTime'); if (tEl) tEl.textContent = '实时';
+    }
+  };
+  window.rv3dTogglePlay = function() {
+    if (rv3dState.mode !== 'replay') window.rv3dToggleMode();
+    rv3dState.playing = !rv3dState.playing;
+    var p = document.getElementById('rv3dPlay');
+    if (p) p.textContent = rv3dState.playing ? '⏸ 暂停' : '▶ 播放';
+    if (rv3dState.playing && !rv3dState.raf) rv3dState.raf = requestAnimationFrame(rv3dLoop);
+  };
+  window.rv3dSeekTo = function(v) {
+    if (!rvBuf.length || rv3dState.mode !== 'replay') return;
+    rv3dState.cursor = Math.round(v / 1000 * (rvBuf.length - 1));
+    rv3dFrameAt(rv3dState.cursor);
+  };
+  window.rv3dReset = function() {
+    rvBuf = [];
+    rv3dState.cursor = 0;
+    var tEl = document.getElementById('rv3dTime'); if (tEl) tEl.textContent = '已清空';
+  };
+})();
+</script>
 <div id="tab-status" class="content">
   <div class="stats">
     <div class="stat-card"><div class="val" id="sDevices">-</div><div class="lbl">设备</div></div>
@@ -470,11 +705,49 @@ async function api(p,opts={}) {
 
 function logout(){ fetch('/api/logout',{method:'POST'}).then(()=>{window.location.href='/ui/login.html';}); }
 
+// HLS error handler: stop infinite retry on unrecoverable errors
+function handleHlsError(hls, id, ev, data) {
+  if (data.fatal) {
+    console.warn('[HLS] '+id+' fatal error:', data.type, data.details);
+    hls._nsRetries = (hls._nsRetries||0) + 1;
+    if (hls._nsRetries >= 2) {
+      console.warn('[HLS] '+id+' giving up after '+hls._nsRetries+' fatal errors');
+      hls.destroy();
+      // Stop proxy if it was started
+      if (proxyStatus[id]) {
+        api('/api/proxy/stop/'+id,{method:'POST'});
+        proxyStatus[id]=false;
+        var btn = document.getElementById('lvBtn-'+id);
+        if (btn) { btn.textContent='观看'; btn.className='btn btn-sm btn-success'; }
+        var vid = document.getElementById('lvVid-'+id);
+        if (vid) { vid.style.display='none'; vid.src=''; }
+        var prev = document.getElementById('lvPrev-'+id);
+        if (prev) { prev.style.display='flex'; prev.innerHTML='<div class="icon">📷</div><div style="color:#ef9a9a">连接失败</div>'; }
+      }
+      return;
+    }
+    // Try to recover once
+    hls.recoverMediaError();
+  }
+}
+
+// Sidebar navigation clicks
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.nav-item').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      e.preventDefault();
+      switchTab(this.getAttribute('data-tab'));
+    });
+  });
+});
+
 function switchTab(name) {
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.content').forEach(c=>c.classList.remove('active'));
-  document.querySelector(`.tab[onclick*="${name}"]`).classList.add('active');
+  document.querySelector(`.nav-item[data-tab="${name}"]`).classList.add('active');
   document.getElementById(`tab-${name}`).classList.add('active');
+  var titles={live:'实时画面',recordings:'录像回放',snapshots:'抓拍',director:'导播',motion:'运动检测',faces:'人脸',discover:'设备发现',status:'状态'};
+  document.querySelector('.topbar-title').textContent=titles[name]||name;
   if (name==='live') renderLive();
   if (name==='recordings') { loadRecordings(); }
   if (name==='schedule') { loadSchedules(); }
@@ -486,6 +759,13 @@ function switchTab(name) {
 // ===== LIVE =====
 async function renderLive() {
   var devs = await api('/api/devices');
+  // Update sidebar status
+  var online = devs.filter(function(d){ return d.status==='online'||d.status==='pushing'; }).length;
+  var offline = devs.length - online;
+  var se = document.getElementById('sidebarOnline');
+  if (se) se.textContent = online;
+  var so = document.getElementById('sidebarOffline');
+  if (so) so.textContent = offline;
   var grid = document.getElementById('liveGrid');
 
   // Apply saved drag order from localStorage
@@ -543,7 +823,8 @@ async function renderLive() {
           <button class="btn btn-sm btn-outline" id="lvVol-${d.id}" onclick="toggleMute('${d.id}')" style="display:${w?'':'none'}">🔇</button>
           <button class="btn btn-sm btn-outline" id="lvTalk-${d.id}" onmousedown="talkStart('${d.id}')" onmouseup="talkStop('${d.id}')" onmouseleave="talkStop('${d.id}')" style="display:${w?'':'none'};color:#40c4ff" title="按住说话">🎤</button>
           <button class="btn btn-sm btn-outline" id="lvFull-${d.id}" onclick="fullscreenVid('${d.id}')" style="display:${w?'':'none'}">⛶</button>
-          ${d.protocol==='usb'?'<button class="btn btn-sm btn-outline" onclick="showV4L2(\''+d.id+'\')" style="color:#8aa0b8" title="摄像头参数">⚙️</button>':(d.protocol===''||d.protocol==='phone')&&d.url&&d.url.startsWith('http')?'<button class="btn btn-sm btn-outline" onclick="showPhoneCam(\''+d.id+'\')" style="color:#8aa0b8" title="手机参数">⚙️</button>':''}
+          ${d.protocol==='usb'?'<button class="btn btn-sm btn-outline" onclick="showV4L2(\''+d.id+'\')" style="color:#8aa0b8" title="摄像头参数">⚙️</button>':(d.protocol===''||d.protocol==='phone')&&d.url&&d.url.startsWith('http')?'<button class="btn btn-sm btn-outline" onclick="showPhoneCam(\''+d.id+'\')" style="color:#8aa0b8" title="手机参数">⚙️</button>':d.protocol==='rtsp'?'<button class="btn btn-sm btn-outline" onclick="showCameraSettings(\''+d.id+'\')" style="color:#8aa0b8" title="图像设置">⚙️</button>':'<button class="btn btn-sm btn-outline" onclick="showDeviceInfo(\''+d.id+'\')" style="color:#8aa0b8" title="设备信息">⚙️</button>'}
+          ${(d.name||'').indexOf('鱼眼')>=0?'<button class="btn btn-sm btn-outline" onclick="openPano(\''+d.id+'\')" style="color:#69f0ae;border-color:#2e7d5b" title="全景查看（鱼眼展开）">🌐</button>':''}
           <button class="btn btn-sm ${w?'btn-danger':'btn-success'}" id="lvBtn-${d.id}"
             onclick="toggleLive('${d.id}')">${w?'停止':'观看'}</button>
           <button class="btn btn-sm btn-outline" onclick="delCam('${d.id}')">✕</button>
@@ -596,6 +877,7 @@ async function renderLive() {
         h.loadSource(MTX_HLS+'/live/'+d.id+'/index.m3u8');
         h.attachMedia(v);
         h.on(Hls.Events.MANIFEST_PARSED, function() { v.play().catch(function(){}); });
+        h.on(Hls.Events.ERROR, function(ev, data) { handleHlsError(h, d.id, ev, data); });
         window['hls_'+d.id] = h;
         // Async WebRTC attempt
         startWebRTC(v, d.id).catch(function(){});
@@ -618,6 +900,12 @@ async function toggleLive(id) {
 
   if (!w) {
     btn.textContent='...'; btn.className='btn btn-sm btn-outline';
+    // First check if device exists
+    var devCheck = await api('/api/devices/'+id);
+    if (!devCheck || devCheck.error) {
+      btn.textContent='观看'; btn.className='btn btn-sm btn-success';
+      toast('设备不存在或已离线','e'); return;
+    }
     const r = await api(`/api/proxy/start/${id}`,{method:'POST'});
     if (r.status==='started') {
       proxyStatus[id]=true;
@@ -629,9 +917,24 @@ async function toggleLive(id) {
       document.getElementById('resSel-'+id).disabled = false;
       document.getElementById('lvFsBtn-'+id).style.display='flex';
       document.getElementById('lvTalk-'+id).style.display='';
-      // Pre-fetch to set MediaMTX cookie
-      fetch(MTX_HLS+'/live/'+id+'/index.m3u8', {credentials: 'include'}).catch(function(){});
-      // Start HLS immediately (don't wait for WebRTC)
+      // Wait for stream to be ready (max 8s)
+      var hlsReady = false;
+      for (var i = 0; i < 16; i++) {
+        try {
+          var resp = await fetch(MTX_HLS+'/live/'+id+'/index.m3u8', {credentials: 'include'});
+          if (resp.ok) { hlsReady = true; break; }
+        } catch(e) {}
+        await new Promise(r2 => setTimeout(r2, 500));
+      }
+      if (!hlsReady) {
+        toast('流未就绪，设备可能离线','e');
+        await api(`/api/proxy/stop/${id}`,{method:'POST'});
+        proxyStatus[id]=false;
+        btn.textContent='观看'; btn.className='btn btn-sm btn-success';
+        vid.style.display='none'; vid.src='';
+        prev.style.display='flex'; prev.innerHTML='<div class="icon">📷</div><div style="color:#ef9a9a">无法连接</div>';
+        return;
+      }
       var hls = new Hls({
         xhrSetup: function(xhr, url) { xhr.withCredentials = true; }
       });
@@ -639,8 +942,9 @@ async function toggleLive(id) {
       hls.attachMedia(vid);
       vid.play().catch(function(){});
       hls.on(Hls.Events.MANIFEST_PARSED, function(){});
+      hls.on(Hls.Events.ERROR, function(ev, data) { handleHlsError(hls, id, ev, data); });
       window['hls_'+id] = hls;
-      // Async WebRTC attempt: if succeeds, keep it alongside HLS
+      // Async WebRTC attempt
       startWebRTC(vid, id).catch(function(){});
     } else {
       btn.textContent='观看'; btn.className='btn btn-sm btn-success';
@@ -1175,6 +1479,11 @@ function fullscreenVid(id) {
   else if (v.webkitRequestFullscreen) v.webkitRequestFullscreen();
 }
 
+// Open equirectangular panorama viewer (fisheye unwarp streams)
+function openPano(id) {
+  window.open('/panorama.html?id='+id, '_blank');
+}
+
 // ===== GRID LAYOUT =====
 var currentLayout = 2;
 function setLayout(n) {
@@ -1368,6 +1677,7 @@ async function changeRes(id, res) {
         h2.loadSource(MTX_HLS+'/live/'+id+'/index.m3u8');
         h2.attachMedia(vid2);
         h2.on(Hls.Events.MANIFEST_PARSED, function() { vid2.play().catch(function(){}); });
+        h2.on(Hls.Events.ERROR, function(ev, data) { handleHlsError(h2, id, ev, data); });
         window['hls_'+id] = h2;
         // Async WebRTC attempt
         startWebRTC(vid2, id).catch(function(){});
@@ -1805,7 +2115,101 @@ async function importSelected() {
   }
 }
 
-// ===== V4L2 Camera Controls =====
+// ===== Device Info Panel (all device types) =====
+function showDeviceInfo(id) {
+  var pid = 'devInfo-'+id;
+  var existing = document.getElementById(pid);
+  if (existing) { existing.style.display = existing.style.display==='none'?'block':'none'; return; }
+  api('/api/devices/'+id).then(function(d) {
+    if (!d) { toast('设备不存在','e'); return; }
+    var html = '<div id="'+pid+'" style="padding:8px 12px;border-top:1px solid #1e2d3d;background:#080b10;font-size:12px">'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-bottom:8px">'+
+        '<span style="color:#5a7288">ID</span><span style="color:#8aa0b8">'+esc(d.id||'')+'</span>'+
+        '<span style="color:#5a7288">协议</span><span style="color:#8aa0b8">'+esc(d.protocol||'')+'</span>'+
+        '<span style="color:#5a7288">地址</span><span style="color:#8aa0b8;word-break:break-all">'+esc(d.url||'')+'</span>'+
+        '<span style="color:#5a7288">状态</span><span id="infoStat-'+id+'" style="color:'+(d.status==='online'?'#69f0ae':'#ef9a9a')+'">'+esc(d.status||'未知')+'</span>'+
+        (d.width?'<span style="color:#5a7288">分辨率</span><span style="color:#8aa0b8">'+d.width+'x'+d.height+'</span>':'')+
+        (d.bitrate?'<span style="color:#5a7288">码率</span><span style="color:#8aa0b8">'+esc(d.bitrate)+'</span>':'')+
+      '</div>'+
+      '<div style="display:flex;gap:4px;flex-wrap:wrap">'+
+        '<button class="btn btn-xs btn-outline" onclick="document.getElementById(\''+pid+'\').style.display=\'none\'">关闭</button>'+
+        '<button class="btn btn-xs btn-outline" onclick="delCam(\''+id+'\');var e=document.getElementById(\''+pid+'\');if(e)e.remove()">删除设备</button>'+
+      '</div></div>';
+    var card = document.getElementById('lv-'+id);
+    if (card) card.insertAdjacentHTML('beforeend', html);
+  }).catch(function(e) { toast('获取设备信息失败','e'); });
+}
+
+// ===== Camera Image Settings (RTSP cameras via CGI) =====
+function showCameraSettings(id) {
+  var pid = 'camSettings-'+id;
+  var existing = document.getElementById(pid);
+  if (existing) { existing.style.display = existing.style.display==='none'?'block':'none'; return; }
+  var panel = document.createElement('div');
+  panel.id = pid;
+  panel.style.cssText = 'position:fixed;top:60px;right:20px;width:320px;max-height:80vh;overflow-y:auto;background:#0d151f;border:1px solid #1e2d3d;border-radius:8px;padding:16px;z-index:1000;box-shadow:0 4px 20px rgba(0,0,0,0.5);';
+  panel.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><b>🎛️ 图像设置</b><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:#6b8299;cursor:pointer;font-size:16px">✕</button></div><div id="cam-loading-'+id+'" style="color:#6b8299;font-size:12px">加载中...</div><div id="cam-ctrls-'+id+'"></div><div id="cam-info-'+id+'"></div>';
+  document.body.appendChild(panel);
+  api('/api/camera/'+id+'/settings').then(function(settings) {
+    var el = document.getElementById('cam-ctrls-'+id);
+    var loading = document.getElementById('cam-loading-'+id);
+    if (!el) return;
+    if (!settings || settings.error || settings.length===0) {
+      loading.innerHTML = '⚠️ 摄像头不支持远程参数调节';
+      // Still show basic info
+      showDeviceInfoInline(id);
+      return;
+    }
+    loading.style.display = 'none';
+    var html = '';
+    settings.forEach(function(s) {
+      var val = s.value || s.min;
+      html += '<div style="margin:8px 0">'+
+        '<label style="display:flex;justify-content:space-between;font-size:12px;color:#8aa0b8">'+
+          esc(s.label)+' <span id="cam-val-'+id+'-'+esc(s.name)+'">'+val+'</span>'+
+        '</label>'+
+        '<input type="range" min="'+s.min+'" max="'+s.max+'" step="'+s.step+'" value="'+val+'" '+
+          'oninput="document.getElementById(\'cam-val-'+id+'-'+esc(s.name)+'\').textContent=this.value" '+
+          'onchange="camSet(\''+id+'\',\''+esc(s.name)+'\',parseFloat(this.value))" style="width:100%">'+
+      '</div>';
+    });
+    el.innerHTML = html;
+  }).catch(function(e) {
+    var loading = document.getElementById('cam-loading-'+id);
+    if (loading) loading.innerHTML = '⚠️ 无法连接摄像头';
+  });
+  // Also show basic device info
+  showDeviceInfoInline(id);
+}
+
+// Show device info inline below settings
+function showDeviceInfoInline(id) {
+  api('/api/devices/'+id).then(function(d) {
+    if (!d) return;
+    var el = document.getElementById('cam-info-'+id);
+    if (!el) return;
+    el.innerHTML =
+      '<div style="margin-top:12px;padding-top:8px;border-top:1px solid #1a2a3a;font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:2px 8px;color:#5a7288">'+
+        '<span>协议</span><span style="color:#8aa0b8">'+esc(d.protocol||'')+'</span>'+
+        '<span>地址</span><span style="color:#8aa0b8;word-break:break-all">'+esc(d.url||'')+'</span>'+
+        '<span>状态</span><span style="color:'+(d.status==='online'?'#69f0ae':'#ef9a9a')+'">'+esc(d.status||'未知')+'</span>'+
+        (d.width?'<span>分辨率</span><span style="color:#8aa0b8">'+d.width+'x'+d.height+'</span>':'')+
+      '</div>'+
+      '<div style="display:flex;gap:4px;margin-top:6px">'+
+        '<button class="btn btn-xs btn-outline" onclick="document.getElementById(\'camSettings-'+id+'\').style.display=\'none\'">关闭</button>'+
+        '<button class="btn btn-xs btn-outline" onclick="window.open(\'http://'+d.url.replace('rtsp://','').split(':')[0]+'\')" title="打开摄像头Web管理页面">🌐 管理页</button>'+
+      '</div>';
+  }).catch(function(){});
+}
+
+// Send a camera setting command
+function camSet(id, name, value) {
+  api('/api/camera/'+id+'/settings', {method:'PUT', body:{name:name, value:value}}).then(function(r) {
+    if (r && r.status==='ok') { /* ok */ }
+  }).catch(function(){});
+}
+
+// ===== V4L2 Settings =====
 function showV4L2(id) {
   var v4l2Id = 'v4l2-panel-'+id;
   var existing = document.getElementById(v4l2Id);
@@ -1909,5 +2313,10 @@ function phoneCmd(id, cmd) {
 }
 
 </script>
+</div><!-- /main -->
+</div><!-- /app -->
+<script src="/js/three.min.js"></script>
+<script src="/js/OrbitControls.js"></script>
+<script src="/js/ruview3d.js"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-# NovaSense 网关 v0.1.0
+# NovaSense 网关 v0.8.4
 
 一站式摄像头监控管理平台：拉流 → 转码 → 分发 → 导播 → 录制 → 抓拍 → 云台控制 → 人脸识别 → 告警通知 → 双向对讲。
 
@@ -459,7 +459,7 @@ cd backend
 go build -o ../video-stream-manager .
 
 # 带版本信息
-go build -ldflags="-s -w -X main.version=0.8.1" -o ../video-stream-manager .
+go build -ldflags="-s -w -X main.version=0.8.4" -o ../video-stream-manager .
 ```
 
 ### 添加新功能

@@ -1,5 +1,5 @@
 # ============================================
-# NovaSense 网关 v0.1.0 — Docker 部署
+# NovaSense 网关 v0.8.4 — Docker 部署
 # ============================================
 # 使用方法:
 #   docker compose up -d
@@ -9,7 +9,7 @@
 
 services:
   mediamtx:
-    image: bluenviron/mediamtx:1.10.0
+    image: bluenviron/mediamtx:1.21.0
     container_name: nms-mediamtx
     restart: unless-stopped
     network_mode: host
@@ -44,3 +44,35 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # ============================================
+  # RuView WiFi CSI 空间感知（方案 A 并置）
+  # UI: http://localhost:3000/ui/index.html
+  # UDP 5005: ESP32 CSI 帧入口
+  # ============================================
+  ruview:
+    image: ruvnet/wifi-densepose:latest
+    container_name: ruview-demo
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3001:3001"
+      - "5005:5005/udp"
+    environment:
+      - RUVIEW_BIND_ADDR=0.0.0.0
+      - RUVIEW_ALLOW_UNAUTHENTICATED=1
+      # 只服务真实 ESP32 CSI 帧，禁用 simulated 演示数据
+      - CSI_SOURCE=esp32
+      # UDP 绑 0.0.0.0（默认 loopback 会拒收 docker-proxy 转发的包 → ICMP unreachable）
+      - RUVIEW_UDP_BIND=0.0.0.0
+    # UDP 数据面：绑 0.0.0.0 + 显式接受无 allowlist（局域网测试）
+    command: ["--udp-insecure-lan"]
+    volumes:
+      # 源码三语 UI（EN/PL/zh-CN），只读挂载
+      - ./ruview-ui:/app/ui:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+

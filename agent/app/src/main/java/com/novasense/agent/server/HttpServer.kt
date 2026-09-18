@@ -183,7 +183,7 @@ body{background:#0a0a0a;color:#e0e0e0;font-family:-apple-system,BlinkMacSystemFo
 <button id="btnRestart" class="danger" onclick="restartServer()">🔄 重启服务器</button>
 </div>
 <div class="hint">MJPEG 流: /video | 截图: /shot.jpg | 音频: /audio.aac | RTSP: /live</div>
-<div class="footer">NovaSense Pro v0.1.0</div>
+<div class="footer">NovaSense Pro v0.8.4</div>
 <div class="toast" id="toast"></div>
 <script>
 function showToast(msg){var t=document.getElementById('toast');t.textContent=msg;t.style.display='block';setTimeout(function(){t.style.display='none'},2000)}

@@ -64,7 +64,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center"
         android:layout_marginBottom="20dp"
-        android:text="NovaSense Center v4.0"
+        android:text="NovaSense Center v0.8.4"
         android:textColor="#FFFFFF"
         android:textSize="10sp"
         android:alpha="0.4" />

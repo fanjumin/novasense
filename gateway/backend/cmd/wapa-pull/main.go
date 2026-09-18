@@ -13,6 +13,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
@@ -25,6 +26,14 @@ import (
 
 // mpeg4StartCode is the MPEG-4 VOP (Video Object Plane) start code.
 var mpeg4StartCode = []byte{0x00, 0x00, 0x01, 0xb6}
+
+// mpeg4Header is the MPEG-4 VOL/VOS/GOV header for 1280x720 Simple Profile.
+// These cameras output raw VOP data without the required headers,
+// so we prepend this header to make the stream decodable by ffmpeg.
+var mpeg4Header, _ = hex.DecodeString(
+	"000001b001000001b58913000001000000012000c48d8800cd28045a1443" +
+	"000001b24c61766335382e3133342e313030000001b300100700",
+)
 
 func main() {
 	if len(os.Args) < 2 {
@@ -82,6 +91,10 @@ func stream(addr string) error {
 			if idx := indexOf(window, mpeg4StartCode); idx >= 0 {
 				remainder := window[idx:]
 				synced = true
+				// Prepend MPEG-4 VOL/VOS header (raw stream lacks these)
+				if _, err := os.Stdout.Write(mpeg4Header); err != nil {
+					return fmt.Errorf("write header: %w", err)
+				}
 				if len(remainder) > 0 {
 					if _, err := os.Stdout.Write(remainder); err != nil {
 						return fmt.Errorf("write stdout: %w", err)

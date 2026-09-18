@@ -759,7 +759,7 @@ fun MainScreen(
             }
 
             Spacer(modifier = Modifier.weight(1f))
-            Text("NovaSense Pro v0.1.0", fontSize = 12.sp,
+            Text("NovaSense Pro v0.8.4", fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(16.dp))
         }

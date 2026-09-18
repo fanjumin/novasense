@@ -113,7 +113,7 @@ fun ComposeMainScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp))
 
             Spacer(Modifier.weight(1f))
-            Text("NovaSense Pro v4.0", fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
+            Text("NovaSense Pro v0.8.4", fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(16.dp))
         }  // Column
         }  // Box
