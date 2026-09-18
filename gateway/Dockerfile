@@ -18,7 +18,8 @@ COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
 COPY backend/ .
-RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o video-stream-manager .
+RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o video-stream-manager . \
+ && CGO_ENABLED=0 go build -ldflags="-s -w" -o wapa-pull ./cmd/wapa-pull
 
 # Stage 2: Runtime (glibc, ships XM SDK)
 FROM debian:bookworm-slim
@@ -28,12 +29,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certi
 # Backend binary
 COPY --from=builder /build/video-stream-manager /usr/local/bin/
 
-# XM (海康) SDK runtime
+# XM (雄迈 XiongMai) SDK runtime
 COPY --from=builder /build/sdk/lib/libxmnetsdk.so /usr/local/lib/
 ENV LD_LIBRARY_PATH=/usr/local/lib
 
-# WAPA protocol helper (optional, for 波力 cameras)
-COPY bin/wapa-pull /usr/local/bin/wapa-pull
+# WAPA protocol helper (optional, for 波粒 cameras) — built from ./cmd/wapa-pull
+COPY --from=builder /build/wapa-pull /usr/local/bin/wapa-pull
 
 # Frontend files
 COPY frontend/ /app/frontend/
