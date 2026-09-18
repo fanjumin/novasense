@@ -60,6 +60,8 @@ NovaSense 的产品自我定位刻意与"监控（surveillance）"划清界限�
 
 ### 2.1 目录树（逻辑）
 
+> **2026-09-19 更新**：下列目录树描述的是**合并前**的本地聚合工作区。此后三仓与未纳管目录已合并为单一仓库 `fanjumin/novasense`（完整历史保留），映射为 `novasense-gateway/→gateway/`、`novasense-agent/→agent/`、`novasense-server-plugin/→server-plugin/`、`novasense-brand/→brand/`、`novasense-viewer/→viewer/`，本文与规划文档移入 `docs/`。正文中形如 `backend/main.go`、`frontend/index.html` 的引用均相对 `gateway/`。
+
 ```
 F:\projects\novasense\                ← 聚合工作区（非 git 仓库）
 ├── README.md                         ← 产品线总览

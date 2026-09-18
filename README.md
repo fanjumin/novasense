@@ -7,6 +7,19 @@
 
 ---
 
+## 仓库结构（monorepo）
+
+> 2026-09-19 起，原 `fanjumin/novasense-gateway`、`fanjumin/novasense-agent` 与未纳管的插件/品牌目录合并为本单一仓库，完整提交历史已保留。
+
+| 目录 | 组件 | 原仓库/来源 |
+|------|------|------------|
+| `gateway/` | 本地感知网关 | fanjumin/novasense-gateway（前身 video-stream-manager） |
+| `agent/` | Android 感知节点 | fanjumin/novasense-agent（前身 netcam-android） |
+| `server-plugin/` | EasyKai/VeroRun 云插件 | 原未纳管目录，本次入库 |
+| `brand/` | 品牌视觉资产 | 原未纳管目录，本次入库 |
+| `viewer/` | 远程查看器（预留） | 占位 |
+| `docs/` | 技术白皮书与规划 | 本次入库 |
+
 ## 产品矩阵
 
 | 产品 | 角色 | 技术栈 | 部署位置 |
@@ -22,7 +35,7 @@
 
 一站式感知网关枢纽。拉流 → 转码 → 分发 → 录制 → 抓拍 → 运动检测 → 人脸识别 → 告警通知 → 双向对讲，全部本地完成。
 
-**目录：** `novasense-gateway/`
+**目录：** `gateway/`
 
 **核心能力：**
 
@@ -63,7 +76,7 @@
 
 将 Android 手机变成感知节点——IP 摄像头 + 环境传感器服务器。无云、无订阅，一部旧手机 + 浏览器即可工作。
 
-**目录：** `novasense-agent/`
+**目录：** `agent/`
 
 **核心能力：**
 
@@ -93,7 +106,7 @@
 
 EasyKai（易开）平台感知网络插件。提供设备管理、RTMP 推流转发、HLS 实时观看、AI 画面分析、手机远程控制、订阅计费、PWA 远程 APP。
 
-**目录：** `novasense-cloud/`
+**目录：** `server-plugin/`（EasyKai 平台 `plugins/novasense/`）
 
 **核心能力：**
 
@@ -120,7 +133,7 @@ EasyKai（易开）平台感知网络插件。提供设备管理、RTMP 推流�
 
 *预留组件* — 多平台远程查看器，用于在手机、平板、桌面等设备上统一查看所有感知节点的实时画面和历史数据。
 
-**目录：** `novasense-viewer/`（空目录，等待开发）
+**目录：** `viewer/`（空目录，等待开发）
 
 ---
 
@@ -178,16 +191,16 @@ EasyKai（易开）平台感知网络插件。提供设备管理、RTMP 推流�
 
 ```bash
 # 1. 启动 Gateway（核心枢纽）
-cd novasense-gateway
+cd gateway
 docker compose up -d
 # 浏览器打开 http://localhost:8899 （默认密码 admin）
 
 # 2. 安装 Agent（手机感知节点）
-# 在 Android 手机上安装 novasense-agent/app/build/outputs/apk/ 中的 APK
-# 或编译：cd novasense-agent && ./gradlew assembleDebug
+# 在 Android 手机上安装 agent/app/build/outputs/apk/ 中的 APK
+# 或编译：cd agent && ./gradlew assembleDebug
 
 # 3. 连接 Cloud（云平台，可选）
-# 将 novasense-cloud/ 部署到 EasyKai 平台的 plugins/ 目录下
+# 将 server-plugin/ 部署到 EasyKai 平台的 plugins/novasense/ 目录下
 ```
 
 ---
