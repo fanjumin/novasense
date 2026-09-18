@@ -1,0 +1,23 @@
+[Unit]
+Description=MediaMTX - 流媒体网关 (HLS/RTMP/WebRTC)
+Documentation=https://github.com/bluenviron/mediamtx
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deployuser
+WorkingDirectory=/home/deployuser/projects/video-stream-manager
+ExecStart=/usr/local/bin/mediamtx /home/deployuser/projects/video-stream-manager/mediamtx/mediamtx.yml
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+# 安全
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

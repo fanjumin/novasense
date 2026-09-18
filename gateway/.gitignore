@@ -1,0 +1,22 @@
+# Build
+bin/
+build/
+*.exe
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+.vscode/
+
+# Env
+.env
+*.pem
+*.key
+
+# Data
+data/
+videos/
+snapshots/
+backend/video-stream-manager
+video-stream-manager

@@ -1,0 +1,1913 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script defer src="/hls.min.js"></script>
+<title>视频流管理平台</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #0a0e14; color: #d0d8e0; min-height: 100vh; }
+.header { background: linear-gradient(135deg, #141e2a 0%, #0a121a 100%); padding: 12px 16px; border-bottom: 1px solid #1e2d3d; display: flex; align-items: center; gap: 12px; }
+.header h1 { font-size: 17px; font-weight: 600; color: #00c8ff; }
+.tabs { display: flex; gap: 1px; background: #0d151f; padding: 0 12px; border-bottom: 1px solid #1e2d3d; }
+.tab { padding: 9px 14px; cursor: pointer; font-size: 13px; color: #6b8299; border-bottom: 2px solid transparent; }
+.tab:hover { color: #c0d0e0; background: #141e2a; }
+.tab.active { color: #00c8ff; border-bottom-color: #00c8ff; }
+.content { padding: 12px; display: none; }
+.content.active { display: block; }
+.live-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.live-grid.cols1 { grid-template-columns: 1fr; }
+.live-grid.cols2 { grid-template-columns: 1fr 1fr; }
+.live-grid.cols3 { grid-template-columns: 1fr 1fr 1fr; }
+.live-grid.cols4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+@media (max-width:900px) { .live-grid.cols3,.live-grid.cols4 { grid-template-columns: 1fr 1fr; } }
+@media (max-width:600px) { .live-grid { grid-template-columns: 1fr; } }
+.live-card { background: #0a121a; border: 1px solid #1a2a3a; border-radius: 6px; overflow: hidden; position:relative; cursor: grab; }
+.live-card:active { cursor: grabbing; }
+.live-card.drag-over { border-color: #00c8ff; box-shadow: 0 0 8px rgba(0,200,255,0.3); }
+.live-card.dragging { opacity: 0.4; }
+.live-card.drag-placeholder { border: 2px dashed #00c8ff; background: rgba(0,200,255,0.05); min-height: 200px; }
+.live-card video { width: 100%; aspect-ratio: 16/9; background: #060a0f; display: block; object-fit: contain; cursor: pointer; }
+.live-card video::-webkit-media-controls { display:none !important; }
+.live-card .info-bar { padding: 6px 8px; display: flex; align-items: center; justify-content: space-between; }
+.live-card .name { font-size: 12px; font-weight: 500; }
+.live-card .preview { width: 100%; aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; background: #060a0f; color: #3a4a5a; font-size: 12px; flex-direction: column; gap: 4px; }
+.live-card .preview .icon { font-size: 28px; }
+.live-card .fullscreen-btn { position:absolute; top:6px; right:6px; background:rgba(0,0,0,0.5); border:none; color:#fff; font-size:14px; width:28px; height:28px; border-radius:4px; cursor:pointer; z-index:3; display:none; align-items:center; justify-content:center; }
+.live-card:hover .fullscreen-btn { display:flex; }
+.live-card .fullscreen-btn:hover { background:rgba(0,200,255,0.6); }
+.add-card { border: 2px dashed #1a2a3a; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 6px; color: #3a4a5a; transition: all .15s; min-height: 200px; }
+.add-card:hover { border-color: #00c8ff; color: #00c8ff; background: #0d1a2a; }
+.add-card .big-icon { font-size: 36px; }
+.add-card .hint { font-size: 13px; }
+.card { background: #111b25; border: 1px solid #1a2a3a; border-radius: 6px; padding: 12px; margin-bottom: 10px; }
+.card h3 { font-size: 13px; margin-bottom: 8px; color: #8aa0b8; font-weight: 500; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid #1a2a3a; }
+th { color: #6b8299; font-weight: 500; background: #0d151f; }
+td { font-size: 12px; }
+tr:hover td { background: #141e2a; }
+.badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: 500; }
+.badge-online,.badge-running { background:#0d3b2a; color:#69f0ae; }
+.badge-offline,.badge-stopped { background:#3a1a1a; color:#ef9a9a; }
+.badge-douyin { background:#1a2a3a; color:#b39ddb; }
+.badge-kuaishou { background:#2a1a1a; color:#ffab91; }
+.badge-bilibili { background:#1a3a2a; color:#80cbc4; }
+.badge-youtube { background:#3a1a1a; color:#ff8a80; }
+.ptz-bar { display:flex; align-items:center; gap:8px; padding:6px 8px; border-top:1px solid #1a2a3a; background:#0a1018; }
+.ptz-pad { position:relative; width:72px; height:72px; flex-shrink:0; }
+.ptz-pad-btn { position:absolute; width:22px; height:22px; border:none; border-radius:3px; background:#141e2a; color:#8aa0b8; font-size:12px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .1s; border:1px solid #1e2d3d; }
+.ptz-pad-btn:hover { background:#1a2a3a; color:#00c8ff; border-color:#00c8ff; }
+.ptz-pad-btn:active { background:#2a3a4a; transform:scale(0.92); }
+.ptz-pad-up { top:0; left:50%; transform:translateX(-50%); }
+.ptz-pad-down { bottom:0; left:50%; transform:translateX(-50%); }
+.ptz-pad-left { left:0; top:50%; transform:translateY(-50%); }
+.ptz-pad-right { right:0; top:50%; transform:translateY(-50%); }
+.ptz-pad-center { left:50%; top:50%; transform:translate(-50%,-50%); background:#0d1a2a; border-color:#2a3a4a; color:#5a7a8a; font-size:10px; cursor:default; }
+.ptz-zoom { display:flex; flex-direction:column; gap:2px; flex-shrink:0; }
+.ptz-zoom-btn { width:24px; height:20px; border:none; border-radius:3px; background:#141e2a; color:#8aa0b8; font-size:11px; line-height:1; cursor:pointer; border:1px solid #1e2d3d; display:flex; align-items:center; justify-content:center; }
+.ptz-zoom-btn:hover { background:#1a2a3a; color:#00c8ff; }
+.ptz-zoom-btn:active { background:#2a3a4a; }
+.ptz-speed { display:flex; align-items:center; gap:4px; font-size:10px; color:#5a7288; flex-shrink:0; }
+.ptz-speed input[type=range] { width:48px; height:3px; -webkit-appearance:none; background:#1e2d3d; border-radius:2px; outline:none; }
+.ptz-speed input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:10px; height:10px; border-radius:50%; background:#00c8ff; cursor:pointer; border:none; }
+.ptz-presets { display:flex; gap:2px; flex-wrap:wrap; flex-shrink:0; }
+.ptz-preset-btn { padding:2px 5px; border:none; border-radius:2px; background:#141e2a; color:#5a7288; font-size:9px; cursor:pointer; border:1px solid #1e2d3d; }
+.ptz-preset-btn:hover { background:#1a2a3a; color:#00c8ff; }
+.dir-grid { display:grid; grid-template-columns:1fr 1fr; gap:4px; background:#0a0e14; }
+.dir-main { grid-column:1/-1; aspect-ratio:16/9; background:#060a0f; position:relative; overflow:hidden; border-radius:4px; }
+.dir-main video { width:100%; height:100%; object-fit:contain; cursor:pointer; }
+.dir-main .dir-label { position:absolute; bottom:6px; left:8px; font-size:11px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.8); background:rgba(0,0,0,0.5); padding:2px 8px; border-radius:3px; }
+.dir-sub { aspect-ratio:4/3; background:#060a0f; position:relative; overflow:hidden; border-radius:4px; cursor:pointer; border:2px solid transparent; }
+.dir-sub.active { border-color:#00c8ff; }
+.dir-sub video { width:100%; height:100%; object-fit:contain; }
+.dir-sub .dir-label { position:absolute; bottom:4px; left:6px; font-size:10px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.8); background:rgba(0,0,0,0.5); padding:1px 6px; border-radius:2px; }
+.btn { display:inline-flex; align-items:center; gap:2px; padding:4px 10px; border:none; border-radius:4px; font-size:12px; cursor:pointer; font-weight:500; }
+.btn-sm { padding:3px 8px; font-size:11px; }
+.btn-primary { background:#005c8a; color:#fff; }
+.btn-primary:hover { background:#0077b0; }
+.btn-danger { background:#8a1a1a; color:#fff; }
+.btn-danger:hover { background:#a52222; }
+.btn-success { background:#1b5e20; color:#fff; }
+.btn-success:hover { background:#2e7d32; }
+.btn-outline { background:transparent; border:1px solid #2a3a4a; color:#8aa0b8; }
+.btn-outline:hover { background:#1a2a3a; }
+.btn-warning { background:#8a6a00; color:#fff; }
+.device-icon { font-size:16px; }
+.device-type-camera { color:#69f0ae; }
+.device-type-ac { color:#40c4ff; }
+.device-type-router { color:#ffab91; }
+.device-type-nas { color:#b39ddb; }
+.device-type-printer { color:#a0a0a0; }
+.device-type-appliance { color:#80cbc4; }
+.device-type-display { color:#f48fb1; }
+.device-type-smart-home { color:#aed581; }
+.device-type-unknown { color:#6b8299; }
+.discover-checkbox { width:18px; height:18px; cursor:pointer; }
+.toolbar { display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+.form-group { margin-bottom:8px; }
+.form-group label { display:block; font-size:12px; color:#6b8299; margin-bottom:3px; }
+.form-group input,.form-group select { width:100%; padding:6px 10px; background:#0a121a; border:1px solid #1e2d3d; border-radius:4px; color:#d0d8e0; font-size:12px; }
+.form-group input:focus { outline:none; border-color:#00c8ff; }
+.form-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(100px,1fr)); gap:8px; margin-bottom:12px; }
+.stat-card { background:#111b25; border:1px solid #1a2a3a; border-radius:6px; padding:10px; text-align:center; }
+.stat-card .val { font-size:20px; font-weight:700; color:#00c8ff; }
+.stat-card .lbl { font-size:11px; color:#5a7288; margin-top:2px; }
+.dir-grid { display:flex; flex-direction:column; gap:8px; }
+.dir-main { background:#000; border:2px solid #00c8ff; border-radius:6px; height:360px; position:relative; overflow:hidden; }
+.dir-main video { width:100%; height:100%; object-fit:contain; }
+.dir-preview-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:6px; }
+.dir-preview { background:#000; border:1px solid #1a2a3a; border-radius:4px; height:150px; position:relative; overflow:hidden; cursor:pointer; transition:border-color .15s; }
+.dir-preview:hover { border-color:#3a5a6a; }
+.dir-preview.active { border-color:#7C4DFF; }
+.dir-preview video { width:100%; height:100%; object-fit:contain; }
+.dir-label { position:absolute; bottom:0; left:0; right:0; padding:4px 8px; background:rgba(0,0,0,0.7); font-size:11px; color:#c8d6e0; }
+.empty { text-align:center; padding:30px; color:#3a4a5a; font-size:13px; }
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:100; }
+.modal { background:#141e2a; border-radius:8px; padding:18px; max-width:520px; width:92%; max-height:80vh; overflow-y:auto; border:1px solid #1e2d3d; }
+.modal h3 { margin-bottom:12px; font-size:14px; }
+.modal-actions { display:flex; gap:6px; justify-content:flex-end; margin-top:10px; }
+.toast { position:fixed; bottom:20px; right:20px; padding:8px 14px; border-radius:4px; color:#fff; font-size:12px; z-index:999; }
+.toast-s { background:#1b5e20; }
+.toast-e { background:#8a1a1a; }
+.toast-i { background:#005c8a; }
+pre { font-family:monospace; font-size:11px; background:#060a0f; padding:6px; border-radius:4px; color:#8aa0b8; overflow-x:auto; }
+a { color:#00c8ff; text-decoration:none; }
+::-webkit-scrollbar { width:5px; }
+::-webkit-scrollbar-thumb { background:#1e2d3d; border-radius:3px; }
+#addFormCard { display:none; }
+#addFormCard.open { display:flex; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>NetCam Center</h1>
+  <span style="font-size:12px;color:#5a7288" id="headerStatus">加载中...</span>
+  <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
+    <span style="font-size:11px;color:#3a5a6a">192.0.2.107:8899</span>
+    <button class="btn btn-xs btn-outline" onclick="logout()" style="font-size:11px;padding:2px 8px">退出</button>
+  </span>
+</div>
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('live')">📺 监控</div>
+  <div class="tab" onclick="switchTab('recordings')">💾 录像</div>
+  <div class="tab" onclick="switchTab('schedule')">⏰ 定时</div>
+  <div class="tab" onclick="switchTab('snapshots')">📸 抓拍</div>
+  <div class="tab" onclick="switchTab('director')">🎬 导播</div>
+  <div class="tab" onclick="switchTab('motion')">🏃 运动</div>
+  <div class="tab" onclick="switchTab('faces')">👤 人脸</div>
+  <div class="tab" onclick="switchTab('discover')">📡 发现</div>
+  <div class="tab" onclick="switchTab('status')">📊 状态</div>
+</div>
+
+<!-- LIVE -->
+<div id="tab-live" class="content active">
+  <div class="toolbar">
+    <button class="btn btn-sm btn-outline" onclick="setLayout(1)">■</button>
+    <button class="btn btn-sm btn-primary" onclick="setLayout(2)">■■</button>
+    <button class="btn btn-sm btn-outline" onclick="setLayout(3)">■■■</button>
+    <button class="btn btn-sm btn-outline" onclick="setLayout(4)">■■■■</button>
+    <button class="btn btn-sm btn-outline" onclick="openAddForm()">+ 添加</button>
+    <button class="btn btn-sm btn-outline" onclick="startScan()">📡 扫描</button>
+    <select id="groupFilter" style="background:#0d151f;border:1px solid #1a2a3a;color:#d0d8e0;padding:3px 6px;border-radius:4px;font-size:12px" onchange="renderLive()">
+      <option value="">🏷️ 全部</option>
+    </select>
+    <span style="flex:1"></span>
+    <button class="btn btn-sm btn-outline" onclick="showGroupManager()">📋 分组</button>
+    <button class="btn btn-sm btn-outline" onclick="renderLive()">🔄</button>
+  </div>
+  <div class="live-grid cols2" id="liveGrid"></div>
+</div>
+
+<!-- RECORDINGS -->
+<div id="tab-recordings" class="content">
+  <div class="toolbar">
+    <button class="btn btn-warning" onclick="showRecord()">🎥 录制</button>
+    <button class="btn btn-outline" onclick="loadRecordings()">🔄 刷新</button>
+    <span style="flex:1"></span>
+    <input id="recSearch" placeholder="搜索设备..." style="background:#0d151f;border:1px solid #1a2a3a;color:#d0d8e0;padding:4px 8px;border-radius:4px;width:140px;font-size:12px" oninput="filterRecordings()">
+    <input id="recDateFrom" type="date" style="background:#0d151f;border:1px solid #1a2a3a;color:#d0d8e0;padding:4px 8px;border-radius:4px;font-size:12px" onchange="filterRecordings()">
+    <input id="recDateTo" type="date" style="background:#0d151f;border:1px solid #1a2a3a;color:#d0d8e0;padding:4px 8px;border-radius:4px;font-size:12px" onchange="filterRecordings()">
+    <button class="btn btn-sm btn-outline" onclick="showStorageSettings()">⚙️ 存储</button>
+  </div>
+  <div id="recStorageBar" style="margin-bottom:8px;display:none">
+    <div style="display:flex;gap:8px;align-items:center;font-size:11px">
+      <span id="recDiskLabel">磁盘</span>
+      <div style="flex:1;height:6px;background:#0a1018;border-radius:3px;overflow:hidden">
+        <div id="recDiskBar" style="height:100%;border-radius:3px;transition:width .3s"></div>
+      </div>
+      <span id="recDiskText" style="color:#5a7288;white-space:nowrap"></span>
+    </div>
+  </div>
+  <div class="card" style="padding:0">
+    <table><thead><tr><th>设备</th><th>时间</th><th>时长</th><th>大小</th><th>类型</th><th>播放</th><th></th></tr></thead>
+      <tbody id="recTable"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- SCHEDULE -->
+<div id="tab-schedule" class="content">
+  <div class="toolbar">
+    <button class="btn btn-primary" onclick="showAddSchedule()">+ 添加计划</button>
+    <button class="btn btn-outline" onclick="loadSchedules()">🔄 刷新</button>
+  </div>
+  <div class="card" style="padding:0">
+    <table><thead><tr><th>名称</th><th>设备</th><th>时段</th><th>天数</th><th>分段</th><th>状态</th><th>上次触发</th><th>操作</th></tr></thead>
+      <tbody id="scheduleTable"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- SNAPSHOTS -->
+<div id="tab-snapshots" class="content">
+  <div class="toolbar">
+    <button class="btn btn-primary" onclick="showAddSnap()">+ 开启抓拍</button>
+    <button class="btn btn-outline" onclick="loadSnapshots()">🔄 刷新</button>
+  </div>
+  <div class="live-grid" id="snapGrid"></div>
+</div>
+
+<!-- DIRECTOR -->
+<div id="tab-director" class="content">
+  <div class="toolbar">
+    <span id="dirStatus" style="font-size:12px;color:#5a7288">加载中...</span>
+    <span style="flex:1"></span>
+    <button class="btn btn-sm btn-primary" onclick="switchSource()">切换</button>
+    <button class="btn btn-sm btn-outline" onclick="stopPGM()">⏹ 停止</button>
+    <button class="btn btn-sm btn-outline" onclick="loadDirector()">🔄 刷新</button>
+  </div>
+  <div style="display:flex;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid #1a2a3a;margin-bottom:6px">
+    <span style="font-size:11px;color:#5a7288">推流地址:</span>
+    <input type="text" id="pushURL" placeholder="rtmp://live.douyin.com/..." 
+      style="flex:1;padding:4px 6px;background:#0a1018;border:1px solid #1a2a3a;border-radius:4px;color:#c8d6e0;font-size:12px">
+    <button class="btn btn-sm btn-primary" onclick="startPush()" style="font-size:11px">▶ 推流</button>
+    <button class="btn btn-sm btn-outline" onclick="stopPush()" style="font-size:11px">⏹ 停止</button>
+  </div>
+  <div id="dirLayout" class="dir-grid" style="min-height:400px">
+    <div class="dir-main" id="dirPGM">
+      <div id="dirPGMPlaceholder" style="display:flex;align-items:center;justify-content:center;height:100%;color:#3a4a5a;font-size:14px">PGM 未启动</div>
+      <video id="dirPGMVid" muted autoplay playsinline style="display:none;width:100%;height:100%;object-fit:contain;background:#000"></video>
+      <div class="dir-label">🎬 PGM 输出</div>
+    </div>
+    <div id="dirPreview" class="dir-preview-grid"></div>
+  </div>
+</div>
+
+<!-- MOTION -->
+<div id="tab-motion" class="content">
+  <div class="toolbar">
+    <button class="btn btn-primary" onclick="addMotion()">+ 开启运动检测</button>
+    <button class="btn btn-outline" onclick="loadMotion()">🔄 刷新</button>
+  </div>
+  <div id="motionCards" class="live-grid cols2"></div>
+  <div id="motionTimeline" style="margin-top:12px"></div>
+</div>
+
+<!-- FACES -->
+<div id="tab-faces" class="content">
+  <div class="toolbar">
+    <button class="btn btn-outline" onclick="loadFaces()">🔄 刷新</button>
+    <span style="flex:1"></span>
+    <span id="faceStatus" style="font-size:12px;color:#5a7288"></span>
+  </div>
+  <div class="card">
+    <h3>已知人脸</h3>
+    <div id="faceList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:8px">
+      <div style="color:#5a7288;font-size:12px;padding:20px;text-align:center">加载中...</div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:10px">
+    <h3>最近识别记录</h3>
+    <table>
+      <thead><tr>
+        <th>时间</th><th>设备</th><th>人脸</th><th>置信度</th><th>截图</th>
+      </tr></thead>
+      <tbody id="faceEventTable"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- DISCOVERY -->
+<div id="tab-discover" class="content">
+  <div class="toolbar">
+    <button class="btn btn-primary" id="scanBtn" onclick="startScan()">🔍 扫描局域网</button>
+    <button class="btn btn-outline" onclick="stopScan()">⏹ 停止</button>
+    <button class="btn btn-outline" onclick="loadDiscover()">🔄 刷新</button>
+    <span style="flex:1"></span>
+    <span id="scanProgress" style="font-size:12px;color:#5a7288"></span>
+  </div>
+  <div class="card" style="padding:0">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:30px"><input type="checkbox" id="discoverSelectAll" onchange="toggleAllDiscover(this.checked)"></th>
+          <th>类型</th>
+          <th>品牌</th>
+          <th>IP地址</th>
+          <th>端口</th>
+          <th>协议</th>
+          <th>方法</th>
+          <th>置信度</th>
+          <th>RTSP路径</th>
+        </tr>
+      </thead>
+      <tbody id="discoverTable"></tbody>
+    </table>
+  </div>
+  <div class="toolbar" style="margin-top:6px">
+    <button class="btn btn-success" onclick="importSelected()">📥 导入选中设备</button>
+    <span id="importStatus" style="font-size:12px;color:#5a7288;margin-left:8px"></span>
+  </div>
+</div>
+
+<!-- STATUS -->
+<div id="tab-status" class="content">
+  <div class="stats">
+    <div class="stat-card"><div class="val" id="sDevices">-</div><div class="lbl">设备</div></div>
+    <div class="stat-card"><div class="val" id="sOnline">-</div><div class="lbl">在线</div></div>
+    <div class="stat-card"><div class="val" id="sRecords">-</div><div class="lbl">录像</div></div>
+  </div>
+  <div class="card"><h3>系统</h3><pre id="sysInfo">加载中...</pre></div>
+</div>
+
+<!-- Add Camera Inline Form (embedded in live grid) -->
+<div id="addFormCard" class="live-card" style="display:none">
+  <div style="padding:12px;display:flex;flex-direction:column;gap:8px;width:100%">
+    <div style="font-size:13px;font-weight:500;color:#00c8ff">添加摄像头</div>
+    <div class="form-group"><label>名称</label><input id="afName" placeholder="大门摄像头"></div>
+    <div class="form-group"><label>地址</label><input id="afUrl" placeholder="rtsp://... 或 http://... 或 /dev/video0"></div>
+    <div class="form-row">
+      <div class="form-group"><label>协议</label><select id="afProto">
+        <option value="rtsp">RTSP</option>
+        <option value="http">HTTP/MJPEG</option>
+        <option value="usb">USB摄像头</option>
+      </select></div>
+      <div class="form-group"><label>分组</label><input id="afGroup" placeholder="大门"></div>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:4px">
+      <button class="btn btn-primary" onclick="submitAddForm()" style="flex:1">添加并观看</button>
+      <button class="btn btn-outline" onclick="closeAddForm()">取消</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalRecord" class="modal-overlay" style="display:none" onclick="closeIfBg(event,'modalRecord')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3>手动录制</h3>
+    <div class="form-group"><label>设备</label><select id="fRecDev"></select></div>
+    <div class="form-group"><label>时长(秒)</label><input id="fRecDur" type="number" value="60"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeById('modalRecord')">取消</button>
+      <button class="btn btn-warning" onclick="submitRecord()">开始</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalSchedule" class="modal-overlay" style="display:none" onclick="closeIfBg(event,'modalSchedule')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3 id="scheduleModalTitle">添加定时计划</h3>
+    <div class="form-group"><label>名称</label><input id="fSchedName" placeholder="如: 白天录制"></div>
+    <div class="form-group"><label>设备</label><select id="fSchedDev"></select></div>
+    <div class="form-row">
+      <div class="form-group"><label>开始时间</label><input id="fSchedStart" type="time" value="08:00"></div>
+      <div class="form-group"><label>结束时间</label><input id="fSchedEnd" type="time" value="20:00"></div>
+    </div>
+    <div class="form-group"><label>天数</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;font-size:12px">
+        <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" class="day-cb" value="1"> 一</label>
+        <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" class="day-cb" value="2"> 二</label>
+        <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" class="day-cb" value="3"> 三</label>
+        <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" class="day-cb" value="4"> 四</label>
+        <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" class="day-cb" value="5"> 五</label>
+        <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" class="day-cb" value="6"> 六</label>
+        <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" class="day-cb" value="0"> 日</label>
+        <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" id="dayAll" checked> 每天</label>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>分段时长(分钟)</label><input id="fSchedDur" type="number" value="30" min="1"></div>
+      <div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:8px">
+        <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="fSchedEnabled" checked> 启用</label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeById('modalSchedule')">取消</button>
+      <button class="btn btn-primary" onclick="submitSchedule()" id="schedSubmitBtn">添加</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalSnap" class="modal-overlay" style="display:none" onclick="closeIfBg(event,'modalSnap')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3>开启抓拍</h3>
+    <div class="form-group"><label>设备</label><select id="fSnapDev"></select></div>
+    <div class="form-row">
+      <div class="form-group"><label>间隔(秒)</label><input id="fSnapInt" type="number" value="30" min="10"></div>
+      <div class="form-group"><label>保留天数(0=永久)</label><input id="fSnapRet" type="number" value="7" min="0"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeById('modalSnap')">取消</button>
+      <button class="btn btn-primary" onclick="submitSnap()">开启</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalStorage" class="modal-overlay" style="display:none" onclick="closeIfBg(event,'modalStorage')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3>⚙️ 存储设置</h3>
+    <div style="font-size:12px;color:#5a7288;margin-bottom:8px">自动清理超过保留天数的旧录像</div>
+    <div class="form-group"><label>保留天数</label><input id="fRetDays" type="number" value="30" min="1" max="365"></div>
+    <div class="form-group"><label>最大磁盘使用率(%)</label><input id="fMaxDisk" type="number" value="80" min="10" max="99"></div>
+    <div class="form-group" style="flex-direction:row;align-items:center;gap:8px">
+      <label style="min-width:auto;width:auto">自动清理</label>
+      <input id="fRetEnabled" type="checkbox" checked style="width:18px;height:18px">
+    </div>
+    <div style="display:flex;gap:6px;margin-top:4px">
+      <button class="btn btn-outline" onclick="manualCleanup()">🧹 立即清理</button>
+      <span id="cleanupResult" style="font-size:11px;color:#5a7288;align-self:center"></span>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeById('modalStorage')">取消</button>
+      <button class="btn btn-primary" onclick="saveStorageSettings()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalGroupManager" class="modal-overlay" style="display:none" onclick="closeIfBg(event,'modalGroupManager')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:400px">
+    <h3>📋 分组管理</h3>
+    <div style="margin-bottom:8px;font-size:12px;color:#5a7288">点击分组名可重命名</div>
+    <div id="groupList" style="margin-bottom:8px">
+      <div style="color:#5a7288;font-size:12px">加载中...</div>
+    </div>
+    <div style="display:flex;gap:4px">
+      <input id="newGroupName" placeholder="新建分组名..." style="flex:1;background:#0d151f;border:1px solid #1a2a3a;color:#d0d8e0;padding:6px 8px;border-radius:4px;font-size:12px">
+      <button class="btn btn-sm btn-primary" onclick="createGroup()">+ 新建</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeById('modalGroupManager')">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+const MTX_HLS = '/hls';
+let proxyStatus = {};
+
+function toast(m,t='s') { const e=document.createElement('div'); e.className=`toast toast-${t}`; e.textContent=m; document.body.appendChild(e); setTimeout(()=>e.remove(),2500); }
+
+async function api(p,opts={}) {
+  const cfg = { headers: {'Content-Type':'application/json'}, ...opts };
+  if (cfg.body && typeof cfg.body === 'object') cfg.body = JSON.stringify(cfg.body);
+  const r = await fetch(API + p, cfg);
+  if (r.status===401) { window.location.href='/ui/login.html'; return {error:'unauthorized'}; }
+  return r.json().catch(()=>({status:r.status}));
+}
+
+function logout(){ fetch('/api/logout',{method:'POST'}).then(()=>{window.location.href='/ui/login.html';}); }
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.content').forEach(c=>c.classList.remove('active'));
+  document.querySelector(`.tab[onclick*="${name}"]`).classList.add('active');
+  document.getElementById(`tab-${name}`).classList.add('active');
+  if (name==='live') renderLive();
+  if (name==='recordings') { loadRecordings(); }
+  if (name==='schedule') { loadSchedules(); }
+  if (name==='snapshots') { loadSnapshots(); }
+  if (name==='faces') { loadFaces(); }
+  if (name==='status') loadStatus();
+}
+
+// ===== LIVE =====
+async function renderLive() {
+  var devs = await api('/api/devices');
+  var grid = document.getElementById('liveGrid');
+
+  // Apply saved drag order from localStorage
+  var savedOrder = loadCardOrder();
+  if (savedOrder && savedOrder.length > 0) {
+    var sorted = [];
+    var devMap = {};
+    devs.forEach(function(d){ devMap[d.id] = d; });
+    savedOrder.forEach(function(id) {
+      if (devMap[id]) {
+        sorted.push(devMap[id]);
+        delete devMap[id];
+      }
+    });
+    Object.keys(devMap).forEach(function(id) { sorted.push(devMap[id]); });
+    devs = sorted;
+  }
+
+  // Populate group filter dropdown
+  var gf = document.getElementById('groupFilter');
+  var groups = await api('/api/groups');
+  var selGroup = gf.value;
+  gf.innerHTML = '<option value="">🏷️ 全部</option>';
+  if (groups) groups.forEach(function(g) {
+    gf.innerHTML += '<option value="'+escAttr(g.name)+'"'+(selGroup===g.name?' selected':'')+'>'+esc(g.name)+' ('+g.count+')</option>';
+  });
+  // Filter by selected group
+  if (selGroup) {
+    devs = devs.filter(function(d) { return (d.group_name||'未分组') === selGroup; });
+  }
+
+  let cards = devs.map(d => {
+    const w = proxyStatus[d.id] || false;
+    return `<div class="live-card" id="lv-${d.id}" draggable="true"
+      ondragstart="dragStart(event,'${d.id}')" ondragover="dragOver(event)" ondrop="dropCard(event,'${d.id}')" ondragend="dragEnd(event)">
+      <div id="lvPrev-${d.id}" class="preview" ${w?'style="display:none"':''}>
+        <div class="icon">📷</div>
+        <div>${esc(d.name)} <span style="color:${d.status==='online'?'#69f0ae':'#ef9a9a'}">●</span></div>
+      </div>
+      <video id="lvVid-${d.id}" muted playsinline ${w?'':'style="display:none"'} src="${w?MTX_HLS+'/live/'+d.id+'/index.m3u8':''}" ondblclick="fullscreenVid('${d.id}')"></video>
+      <button class="fullscreen-btn" id="lvFsBtn-${d.id}" onclick="fullscreenVid('${d.id}')">⛶</button>
+      <div class="info-bar">
+        <span class="name">${esc(d.name)}
+          ${d.group_name?'<span style="font-size:9px;color:#5a7288;background:#0d151f;padding:1px 4px;border-radius:2px;margin-left:4px">'+esc(d.group_name)+'</span>':''}
+        </span>
+        <select class="res-select" id="resSel-${d.id}" onchange="changeRes('${d.id}',this.value)" ${w?'':'disabled'} style="font-size:10px;background:#0a121a;color:#8aa0b8;border:1px solid #1e2d3d;border-radius:3px;padding:1px 4px;margin:0 4px">
+          <option value="auto">自动</option>
+          <option value="854x480">480p</option>
+          <option value="1280x720">720p</option>
+          <option value="1920x1080">1080p</option>
+          <option value="2560x1440">2K</option>
+          <option value="3840x2160">4K</option>
+        </select>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-sm btn-outline" id="lvVol-${d.id}" onclick="toggleMute('${d.id}')" style="display:${w?'':'none'}">🔇</button>
+          <button class="btn btn-sm btn-outline" id="lvTalk-${d.id}" onmousedown="talkStart('${d.id}')" onmouseup="talkStop('${d.id}')" onmouseleave="talkStop('${d.id}')" style="display:${w?'':'none'};color:#40c4ff" title="按住说话">🎤</button>
+          <button class="btn btn-sm btn-outline" id="lvFull-${d.id}" onclick="fullscreenVid('${d.id}')" style="display:${w?'':'none'}">⛶</button>
+          ${d.protocol==='usb'?'<button class="btn btn-sm btn-outline" onclick="showV4L2(\''+d.id+'\')" style="color:#8aa0b8" title="摄像头参数">⚙️</button>':(d.protocol===''||d.protocol==='phone')&&d.url&&d.url.startsWith('http')?'<button class="btn btn-sm btn-outline" onclick="showPhoneCam(\''+d.id+'\')" style="color:#8aa0b8" title="手机参数">⚙️</button>':''}
+          <button class="btn btn-sm ${w?'btn-danger':'btn-success'}" id="lvBtn-${d.id}"
+            onclick="toggleLive('${d.id}')">${w?'停止':'观看'}</button>
+          <button class="btn btn-sm btn-outline" onclick="delCam('${d.id}')">✕</button>
+        </div>
+      </div>
+      <div id="lvPtz-${d.id}" class="ptz-bar" style="display:none">
+        <div class="ptz-pad">
+          <button class="ptz-pad-btn ptz-pad-up" onmousedown="ptzStart('${d.id}','up')" onmouseup="ptzStop('${d.id}')" onmouseleave="ptzStop('${d.id}')">▲</button>
+          <button class="ptz-pad-btn ptz-pad-left" onmousedown="ptzStart('${d.id}','left')" onmouseup="ptzStop('${d.id}')" onmouseleave="ptzStop('${d.id}')">◀</button>
+          <div class="ptz-pad-btn ptz-pad-center">●</div>
+          <button class="ptz-pad-btn ptz-pad-right" onmousedown="ptzStart('${d.id}','right')" onmouseup="ptzStop('${d.id}')" onmouseleave="ptzStop('${d.id}')">▶</button>
+          <button class="ptz-pad-btn ptz-pad-down" onmousedown="ptzStart('${d.id}','down')" onmouseup="ptzStop('${d.id}')" onmouseleave="ptzStop('${d.id}')">▼</button>
+        </div>
+        <div class="ptz-zoom">
+          <button class="ptz-zoom-btn" onmousedown="ptzStart('${d.id}','zoom_in')" onmouseup="ptzStop('${d.id}')" onmouseleave="ptzStop('${d.id}')">＋</button>
+          <button class="ptz-zoom-btn" onmousedown="ptzStart('${d.id}','zoom_out')" onmouseup="ptzStop('${d.id}')" onmouseleave="ptzStop('${d.id}')">−</button>
+        </div>
+        <div class="ptz-speed">
+          <span>慢</span>
+          <input type="range" id="ptzSpd-${d.id}" min="1" max="10" value="3">
+          <span>快</span>
+        </div>
+        <div class="ptz-presets">
+          <button class="ptz-preset-btn" onclick="ptzPreset('${d.id}',1)">P1</button>
+          <button class="ptz-preset-btn" onclick="ptzPreset('${d.id}',2)">P2</button>
+          <button class="ptz-preset-btn" onclick="ptzPreset('${d.id}',3)">P3</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Add card (always at the end)
+  const addCard = `<div class="live-card add-card" onclick="openAddForm()">
+    <div class="big-icon">+</div>
+    <div class="hint">添加摄像头</div>
+  </div>`;
+
+  grid.innerHTML = cards + addCard;
+  grid.className = 'live-grid cols'+currentLayout;
+
+  // Auto-play already-watching
+  devs.forEach(d => {
+    if (proxyStatus[d.id]) {
+      const v = document.getElementById(`lvVid-${d.id}`);
+      if (v) {
+        // Start HLS immediately
+        var h = new Hls({
+          xhrSetup: function(x, u) { x.withCredentials = true; }
+        });
+        h.loadSource(MTX_HLS+'/live/'+d.id+'/index.m3u8');
+        h.attachMedia(v);
+        h.on(Hls.Events.MANIFEST_PARSED, function() { v.play().catch(function(){}); });
+        window['hls_'+d.id] = h;
+        // Async WebRTC attempt
+        startWebRTC(v, d.id).catch(function(){});
+      }
+      const ptz = document.getElementById('lvPtz-'+d.id);
+      if (ptz) ptz.style.display='flex';
+      const vol = document.getElementById('lvVol-'+d.id);
+      if (vol) vol.style.display='';
+      const full = document.getElementById('lvFull-'+d.id);
+      if (full) full.style.display='';
+    }
+  });
+}
+
+async function toggleLive(id) {
+  const w = proxyStatus[id] || false;
+  const btn = document.getElementById(`lvBtn-${id}`);
+  const prev = document.getElementById(`lvPrev-${id}`);
+  const vid = document.getElementById(`lvVid-${id}`);
+
+  if (!w) {
+    btn.textContent='...'; btn.className='btn btn-sm btn-outline';
+    const r = await api(`/api/proxy/start/${id}`,{method:'POST'});
+    if (r.status==='started') {
+      proxyStatus[id]=true;
+      btn.textContent='停止'; btn.className='btn btn-sm btn-danger';
+      prev.style.display='none'; vid.style.display='block';
+      document.getElementById('lvPtz-'+id).style.display='flex';
+      document.getElementById('lvVol-'+id).style.display='';
+      document.getElementById('lvFull-'+id).style.display='';
+      document.getElementById('resSel-'+id).disabled = false;
+      document.getElementById('lvFsBtn-'+id).style.display='flex';
+      document.getElementById('lvTalk-'+id).style.display='';
+      // Pre-fetch to set MediaMTX cookie
+      fetch(MTX_HLS+'/live/'+id+'/index.m3u8', {credentials: 'include'}).catch(function(){});
+      // Start HLS immediately (don't wait for WebRTC)
+      var hls = new Hls({
+        xhrSetup: function(xhr, url) { xhr.withCredentials = true; }
+      });
+      hls.loadSource(MTX_HLS+'/live/'+id+'/index.m3u8');
+      hls.attachMedia(vid);
+      vid.play().catch(function(){});
+      hls.on(Hls.Events.MANIFEST_PARSED, function(){});
+      window['hls_'+id] = hls;
+      // Async WebRTC attempt: if succeeds, keep it alongside HLS
+      startWebRTC(vid, id).catch(function(){});
+    } else {
+      btn.textContent='观看'; btn.className='btn btn-sm btn-success';
+      toast(r.error||'失败','e');
+    }
+  } else {
+    await api(`/api/proxy/stop/${id}`,{method:'POST'});
+    proxyStatus[id]=false;
+    btn.textContent='观看'; btn.className='btn btn-sm btn-success';
+    vid.style.display='none'; vid.src='';
+    prev.style.display='flex';
+    prev.innerHTML='<div class="icon">📷</div><div style="color:#6b8299">已停止</div>';
+    prev.onclick=null;
+    document.getElementById('lvPtz-'+id).style.display='none';
+    document.getElementById('lvVol-'+id).style.display='none';
+    document.getElementById('lvFull-'+id).style.display='none';
+    document.getElementById('resSel-'+id).disabled = true;
+    document.getElementById('lvFsBtn-'+id).style.display='none';
+    document.getElementById('lvTalk-'+id).style.display='none';
+    if (window['hls_'+id]) { window['hls_'+id].destroy(); delete window['hls_'+id]; }
+    if (window['webrtc_'+id]) { window['webrtc_'+id].close(); delete window['webrtc_'+id]; }
+    var pb = document.getElementById('lvProto-'+id);
+    if (pb) pb.remove();
+  }
+}
+
+// ===== WebRTC Playback (WHEP via MediaMTX) =====
+async function startWebRTC(videoEl, streamId) {
+  var mtxHost = '192.0.2.107';
+  var whepURL = 'http://' + mtxHost + ':8889/live/' + streamId + '/whep';
+  try {
+    var pc = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    });
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    pc.addTransceiver('audio', { direction: 'recvonly' });
+    var offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    var resp = await fetch(whepURL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/sdp' },
+      body: offer.sdp
+    });
+    if (!resp.ok) { pc.close(); return false; }
+    var answerSdp = await resp.text();
+    await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+    pc.ontrack = function(event) {
+      videoEl.srcObject = event.streams[0];
+      videoEl.play().catch(function(){});
+    };
+    pc.oniceconnectionstatechange = function() {
+      if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {}
+    };
+    window['webrtc_'+streamId] = pc;
+    return true;
+  } catch (e) {
+    console.warn('WebRTC failed for', streamId, e);
+    return false;
+  }
+}
+
+// ===== ADD CAMERA (inline in live page) =====
+function openAddForm() {
+  ['afName','afUrl','afProto','afGroup'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('addFormCard').style.display='flex';
+  document.getElementById('addFormCard').className='live-card';
+  document.getElementById('afUrl').placeholder = 'rtsp://... 或 http://...';
+}
+
+function closeAddForm() {
+  document.getElementById('addFormCard').style.display='none';
+}
+
+async function submitAddForm() {
+  var proto = document.getElementById('afProto').value;
+  var url = document.getElementById('afUrl').value;
+  var name = document.getElementById('afName').value;
+  if (!name) { name = url.replace(/^rtsp:\/\//,'').replace(/^http:\/\//,'').replace('/dev/','').split('/')[0]; }
+  if (!url) { toast('请填地址','e'); return; }
+
+  if (proto === 'usb') { url = url; }
+  else if (proto === 'http' && !url.startsWith('http')) { url = 'http://'+url; }
+  else if (proto === 'rtsp' && !url.startsWith('rtsp://')) { url = 'rtsp://'+url; }
+
+  var d = {
+    name: name,
+    protocol: proto,
+    url: url,
+    username: '',
+    password: '',
+    group_name: document.getElementById('afGroup').value
+  };
+  if (!d.url) { toast('请填地址','e'); return; }
+
+  const r = await api('/api/devices', {method:'POST', body:d});
+  if (r.id) {
+    toast('摄像头已添加');
+    closeAddForm();
+    await renderLive();
+    setTimeout(() => toggleLive(r.id), 500);
+  } else {
+    toast('添加失败','e');
+  }
+}
+
+async function delCam(id) {
+  if (!confirm('删除此摄像头?')) return;
+  if (proxyStatus[id]) await toggleLive(id);
+  await api(`/api/devices/${id}`, {method:'DELETE'});
+  toast('已删除');
+  renderLive();
+  loadStatus();
+}
+
+// ===== RECORD =====
+async function loadRecordings() {
+  const r=await api('/api/recordings');
+
+  // Load disk stats
+  try {
+    const storage=await api('/api/storage');
+    if (storage && storage.disk) {
+      var d=storage.disk;
+      document.getElementById('recStorageBar').style.display='block';
+      var bar=document.getElementById('recDiskBar');
+      var pct=d.used_percent.toFixed(0);
+      bar.style.width=pct+'%';
+      bar.style.background=pct>80?'#ef5350':pct>60?'#ffa726':'#66bb6a';
+      document.getElementById('recDiskLabel').textContent='💾 录像('+d.recording_count+'个)';
+      document.getElementById('recDiskText').textContent=sz(d.used_bytes)+' / '+sz(d.total_bytes)+' ('+pct+'%)';
+    }
+  } catch(e) {}
+
+  window._allRecordings=r;
+  filterRecordings();
+}
+
+window._allRecordings=[];
+
+function filterRecordings() {
+  var r=window._allRecordings||[];
+  var q=document.getElementById('recSearch').value.trim().toLowerCase();
+  var dFrom=document.getElementById('recDateFrom').value;
+  var dTo=document.getElementById('recDateTo').value;
+
+  if (q) r=r.filter(x=>x.device_id.toLowerCase().includes(q));
+  if (dFrom) r=r.filter(x=>x.start_time&&x.start_time>=dFrom);
+  if (dTo) r=r.filter(x=>x.start_time&&x.start_time<=dTo+'T23:59:59');
+
+  var tb=document.getElementById('recTable');
+  if (!r.length){tb.innerHTML='<tr><td colspan="7" class="empty">暂无录像</td></tr>';return;}
+  tb.innerHTML=r.map(x=>{
+    var typeLabel=x.event_type==='motion'?'🏃 运动':'📹 手动';
+    return `<tr>
+      <td style="font-size:11px;color:#6b8299">${esc(x.device_id)}</td>
+      <td>${x.start_time?new Date(x.start_time).toLocaleString():'-'}</td>
+      <td>${x.duration?x.duration+'s':'-'}</td>
+      <td>${x.file_size?sz(x.file_size):'-'}</td>
+      <td><span class="badge badge-${x.event_type==='motion'?'online':'offline'}">${typeLabel}</span></td>
+      <td><a href="${x.play_url||'#'}" target="_blank" class="btn btn-sm btn-primary">▶</a></td>
+      <td><button class="btn btn-sm btn-outline" style="color:#ef5350" onclick="deleteRecording('${x.id}')">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function deleteRecording(id) {
+  if (!confirm('确定删除这条录像？')) return;
+  await api('/api/recordings?id='+id,{method:'DELETE'});
+  loadRecordings();
+}
+
+// ===== STORAGE SETTINGS =====
+async function showStorageSettings() {
+  var s=await api('/api/storage');
+  if (s && s.retention) {
+    document.getElementById('fRetDays').value=s.retention.retention_days;
+    document.getElementById('fMaxDisk').value=s.retention.max_disk_usage_pct;
+    document.getElementById('fRetEnabled').checked=s.retention.enabled;
+  }
+  document.getElementById('cleanupResult').textContent='';
+  closeById('modalStorage');
+  document.getElementById('modalStorage').style.display='flex';
+}
+
+async function saveStorageSettings() {
+  var rc={
+    retention_days: +document.getElementById('fRetDays').value||30,
+    max_disk_usage_pct: +document.getElementById('fMaxDisk').value||80,
+    enabled: document.getElementById('fRetEnabled').checked,
+  };
+  await api('/api/storage',{method:'PUT',body:rc});
+  toast('存储设置已保存');
+  closeById('modalStorage');
+}
+
+async function manualCleanup() {
+  document.getElementById('cleanupResult').textContent='清理中...';
+  var r=await api('/api/storage',{method:'POST'});
+  document.getElementById('cleanupResult').textContent=r.deleted>0?'🧹 已清理 '+r.deleted+' 个录像':'✓ 无需清理';
+  loadRecordings();
+}
+
+async function showRecord() {
+  const d=await api('/api/devices');
+  document.getElementById('fRecDev').innerHTML=d.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');
+  document.getElementById('modalRecord').style.display='flex';
+}
+async function submitRecord() {
+  const data={device_id:document.getElementById('fRecDev').value,duration:+document.getElementById('fRecDur').value||600};
+  if(!data.device_id){toast('选择设备','e');return;}
+  await api('/api/recordings',{method:'POST',body:data});
+  toast('录制完成');closeById('modalRecord');loadRecordings();
+}
+
+// ===== SCHEDULE =====
+let schedEditId = null;
+
+async function loadSchedules() {
+  const s=await api('/api/schedules');
+  const tb=document.getElementById('scheduleTable');
+  if (!s.length){tb.innerHTML='<tr><td colspan="8" class="empty">暂无定时计划</td></tr>';return;}
+  const dayNames={'0':'日','1':'一','2':'二','3':'三','4':'四','5':'五','6':'六'};
+  tb.innerHTML=s.map(x=>{
+    const days=x.days?x.days.split(',').map(d=>dayNames[d.trim()]||d).join(' '):'每天';
+    return `<tr>
+      <td>${esc(x.name)}</td>
+      <td style="font-size:11px;color:#6b8299">${esc(x.device_id)}</td>
+      <td>${esc(x.time_start)}-${esc(x.time_end)}</td>
+      <td style="font-size:11px">${days}</td>
+      <td>${x.duration_min}分</td>
+      <td><span class="badge badge-${x.enabled?'online':'offline'}">${x.enabled?'启用':'停用'}</span></td>
+      <td style="font-size:11px;color:#6b8299">${x.last_triggered?new Date(x.last_triggered).toLocaleString():'-'}</td>
+      <td>
+        <button class="btn btn-sm btn-outline" onclick="editSchedule('${x.id}')">编辑</button>
+        <button class="btn btn-sm btn-danger" onclick="delSchedule('${x.id}')">删</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+async function showAddSchedule() {
+  const d=await api('/api/devices');
+  document.getElementById('fSchedDev').innerHTML=d.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');
+  document.getElementById('fSchedName').value='';
+  document.getElementById('fSchedStart').value='08:00';
+  document.getElementById('fSchedEnd').value='20:00';
+  document.getElementById('fSchedDur').value='30';
+  document.getElementById('fSchedEnabled').checked=true;
+  document.getElementById('dayAll').checked=true;
+  document.querySelectorAll('.day-cb').forEach(c=>c.checked=false);
+  schedEditId=null;
+  document.getElementById('scheduleModalTitle').textContent='添加定时计划';
+  document.getElementById('schedSubmitBtn').textContent='添加';
+  document.getElementById('modalSchedule').style.display='flex';
+}
+document.addEventListener('change',function(e){
+  if(e.target.id==='dayAll'){
+    document.querySelectorAll('.day-cb').forEach(c=>c.checked=e.target.checked);
+  }else if(e.target.classList.contains('day-cb')){
+    document.getElementById('dayAll').checked=false;
+  }
+});
+async function submitSchedule() {
+  const days=[];
+  document.querySelectorAll('.day-cb:checked').forEach(c=>days.push(c.value));
+  const daysStr=document.getElementById('dayAll').checked?'':days.join(',');
+  const obj={
+    name:document.getElementById('fSchedName').value||'定时录制',
+    device_id:document.getElementById('fSchedDev').value,
+    time_start:document.getElementById('fSchedStart').value,
+    time_end:document.getElementById('fSchedEnd').value,
+    days:daysStr,
+    duration_min:+document.getElementById('fSchedDur').value||30,
+    enabled:document.getElementById('fSchedEnabled').checked
+  };
+  if (!obj.device_id){toast('选择设备','e');return;}
+  if (schedEditId){
+    obj.id=schedEditId;
+    await api('/api/schedules/'+schedEditId,{method:'PUT',body:obj});
+    toast('已更新');
+  }else{
+    await api('/api/schedules',{method:'POST',body:obj});
+    toast('已添加');
+  }
+  closeById('modalSchedule');loadSchedules();
+}
+async function editSchedule(id) {
+  const x=await api('/api/schedules/'+id);
+  if (!x||x.error){toast('加载失败','e');return;}
+  const d=await api('/api/devices');
+  document.getElementById('fSchedDev').innerHTML=d.map(v=>`<option value="${v.id}" ${v.id===x.device_id?'selected':''}>${esc(v.name)}</option>`).join('');
+  document.getElementById('fSchedName').value=x.name;
+  document.getElementById('fSchedStart').value=x.time_start;
+  document.getElementById('fSchedEnd').value=x.time_end;
+  document.getElementById('fSchedDur').value=x.duration_min;
+  document.getElementById('fSchedEnabled').checked=x.enabled;
+  document.querySelectorAll('.day-cb').forEach(c=>c.checked=false);
+  if (x.days){
+    x.days.split(',').forEach(d=>{
+      const cb=document.querySelector(`.day-cb[value="${d.trim()}"]`);
+      if(cb)cb.checked=true;
+    });
+    document.getElementById('dayAll').checked=false;
+  }else{
+    document.getElementById('dayAll').checked=true;
+  }
+  schedEditId=id;
+  document.getElementById('scheduleModalTitle').textContent='编辑定时计划';
+  document.getElementById('schedSubmitBtn').textContent='保存';
+  document.getElementById('modalSchedule').style.display='flex';
+}
+async function delSchedule(id) {
+  if(!confirm('删除此计划?'))return;
+  await api('/api/schedules/'+id,{method:'DELETE'});
+  toast('已删除');loadSchedules();
+}
+
+// ===== SNAPSHOTS =====
+async function loadSnapshots() {
+  const sns=await api('/api/snapshots');
+  const grid=document.getElementById('snapGrid');
+  if (!sns.length){grid.innerHTML='<div class="live-card" style="flex:1;padding:30px;text-align:center;color:#5a7288"><div style="font-size:32px;margin-bottom:8px">📸</div><div>暂无抓拍配置，点击「开启抓拍」开始</div></div>';return;}
+  grid.innerHTML=sns.map(s=>{
+    const latestUrl=`/snapshots/${s.id}/latest.jpg`;
+    return `<div class="live-card" style="flex:1 1 320px" data-snap="${s.id}">
+      <div class="preview" style="aspect-ratio:16/9;overflow:hidden;padding:0;position:relative"
+        onclick="showSnapGallery('${s.id}')">
+        <img src="${latestUrl}?t=${Date.now()}" style="width:100%;height:100%;object-fit:cover;cursor:pointer"
+          onerror="this.parentNode.innerHTML='<div class=icon>📷</div><div style=color:#3a4a5a>等待抓拍...</div>'">
+        <div style="position:absolute;bottom:4px;right:4px;font-size:10px;background:rgba(0,0,0,0.6);padding:1px 5px;border-radius:3px;color:#8aa0b8">
+          ${s.enabled?'每'+s.interval+'秒':'已暂停'}</div>
+      </div>
+      <div class="info-bar">
+        <span class="name">${s.id.slice(0,8)} <span class="badge badge-${s.enabled?'online':'offline'}" style="font-size:10px">${s.enabled?'抓拍中':'暂停'}</span></span>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-sm ${s.enabled?'btn-warning':'btn-success'}" onclick="toggleSnap('${s.id}',${!s.enabled})">${s.enabled?'暂停':'恢复'}</button>
+          <button class="btn btn-sm btn-outline" onclick="showSnapGallery('${s.id}')">历史</button>
+          <button class="btn btn-sm btn-danger" onclick="delSnap('${s.id}')">✕</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function showAddSnap() {
+  const d=await api('/api/devices');
+  document.getElementById('fSnapDev').innerHTML=d.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');
+  document.getElementById('fSnapInt').value='30';
+  document.getElementById('fSnapRet').value='7';
+  document.getElementById('modalSnap').style.display='flex';
+}
+async function submitSnap() {
+  const obj={device_id:document.getElementById('fSnapDev').value,enabled:true,interval:+document.getElementById('fSnapInt').value||30,retention:+document.getElementById('fSnapRet').value||7};
+  if(!obj.device_id){toast('选择设备','e');return;}
+  await api('/api/snapshots',{method:'POST',body:obj});
+  toast('抓拍已开启');closeById('modalSnap');loadSnapshots();
+}
+async function toggleSnap(id,enabled) {
+  await api('/api/snapshots/'+id,{method:'PUT',body:{id:id,enabled:enabled,interval:30,retention:7}});
+  loadSnapshots();
+}
+async function delSnap(id) {
+  if(!confirm('关闭抓拍?'))return;
+  await api('/api/snapshots/'+id,{method:'DELETE'});
+  toast('已关闭');loadSnapshots();
+}
+async function showSnapGallery(id) {
+  const existing=document.getElementById('snap-gallery-'+id);
+  if(existing){existing.remove();return;}
+  const list=await api('/api/snapshots/list/'+id);
+  if(!list||!list.length){toast('暂无历史抓拍','i');return;}
+  const div=document.createElement('div');
+  div.id='snap-gallery-'+id;
+  div.style.cssText='display:flex;flex-wrap:wrap;gap:4px;padding:8px;background:#0a121a;border-top:1px solid #1a2a3a';
+  div.innerHTML=list.sort().reverse().slice(0,50).map(f=>
+    `<a href="/snapshots/${id}/${f}" target="_blank" style="width:60px;height:45px;overflow:hidden;border-radius:3px;border:1px solid #1a2a3a">
+      <img src="/snapshots/${id}/${f}" style="width:100%;height:100%;object-fit:cover"></a>`
+  ).join('');
+  document.querySelector(`[data-snap="${id}"]`).appendChild(div);
+}
+
+// ===== STATUS =====
+async function loadStatus() {
+  const s=await api('/api/status');
+  document.getElementById('sDevices').textContent=s.devices??0;
+  document.getElementById('sOnline').textContent=s.online_devices??'-';
+  document.getElementById('sRecords').textContent=s.recordings??0;
+  document.getElementById('sysInfo').textContent=JSON.stringify(s,null,2);
+  document.getElementById('headerStatus').textContent=`v${s.version} | 设备 ${s.devices??0} | ${s.online_devices??'?'}在线`;
+}
+
+function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);}
+function escAttr(s){return String(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function sz(b){if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(1)+'KB';return(b/1048576).toFixed(1)+'MB';}
+function closeById(id){document.getElementById(id).style.display='none';}
+function closeIfBg(e,id){if(e.target===e.currentTarget)document.getElementById(id).style.display='none';}
+
+setInterval(loadStatus,10000);
+// NO periodic renderLive — it destroys video DOM elements
+
+// ===== SSE Event Stream =====
+(function() {
+  if (!window.EventSource) return;
+  var es = new EventSource('/api/events');
+  es.addEventListener('connected', function() {
+    console.log('[SSE] connected');
+  });
+  es.onmessage = function(e) {
+    try {
+      var evt = JSON.parse(e.data);
+      if (evt.type === 'motion') {
+        var d = evt.data;
+        var name = d.device_name || d.device_id;
+        // Show browser notification
+        if ('Notification' in window && Notification.permission === 'granted') {
+          var n = new Notification('🔴 运动检测: ' + name, {
+            body: new Date(d.detected_at).toLocaleString(),
+            tag: 'motion-' + d.device_id,
+            requireInteraction: true
+          });
+          n.onclick = function() {
+            window.focus();
+            switchTab('live');
+          };
+          setTimeout(function() { n.close(); }, 8000);
+        }
+      }
+    } catch(e) {}
+  };
+  es.onerror = function() {
+    // Will auto-reconnect
+  };
+})();
+
+// Request notification permission
+if ('Notification' in window && Notification.permission === 'default') {
+  Notification.requestPermission();
+}
+
+renderLive(); loadRecordings(); loadSchedules(); loadSnapshots(); loadStatus();
+
+// ===== AUDIO TOGGLE =====
+function toggleMute(id) {
+  const v = document.getElementById('lvVid-'+id);
+  if (!v) return;
+  v.muted = !v.muted;
+  document.getElementById('lvVol-'+id).textContent = v.muted ? '🔇' : '🔊';
+}
+
+// ===== PUSH-TO-TALK =====
+var talkStreams = {};  // MediaStream per device
+var talkWS = {};       // WebSocket per device
+var talkAudioCtx = {}; // AudioContext per device
+
+function talkStart(id) {
+  if (talkWS[id]) return; // already talking
+
+  var ws = new WebSocket('ws://' + location.host + '/api/talk/' + id);
+  talkWS[id] = ws;
+
+  ws.onopen = function() {
+    var btn = document.getElementById('lvTalk-'+id);
+    if (btn) { btn.style.background = '#40c4ff'; btn.style.color = '#000'; btn.textContent = '🔊'; }
+
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+      talkStreams[id] = stream;
+      var ctx = new AudioContext();
+      talkAudioCtx[id] = ctx;
+      var src = ctx.createMediaStreamSource(stream);
+      var processor = ctx.createScriptProcessor(4096, 1, 1);
+      src.connect(processor);
+      processor.connect(ctx.destination);
+
+      processor.onaudioprocess = function(e) {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        var input = e.inputBuffer.getChannelData(0);
+        // Convert Float32 to PCM s16le
+        var buf = new Int16Array(input.length);
+        for (var i = 0; i < input.length; i++) {
+          var s = Math.max(-1, Math.min(1, input[i]));
+          buf[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        ws.send(buf.buffer);
+      };
+    }).catch(function(err) {
+      console.warn('[talk] mic access denied:', err);
+      talkStop(id);
+    });
+  };
+
+  ws.onclose = function() {
+    talkCleanup(id);
+  };
+
+  ws.onerror = function() {
+    talkCleanup(id);
+  };
+}
+
+function talkStop(id) {
+  if (talkAudioCtx[id]) {
+    talkAudioCtx[id].close().catch(function(){});
+    delete talkAudioCtx[id];
+  }
+  if (talkStreams[id]) {
+    talkStreams[id].getTracks().forEach(function(t) { t.stop(); });
+    delete talkStreams[id];
+  }
+  if (talkWS[id]) {
+    talkWS[id].close();
+    delete talkWS[id];
+  }
+  var btn = document.getElementById('lvTalk-'+id);
+  if (btn) { btn.style.background = ''; btn.style.color = '#40c4ff'; btn.textContent = '🎤'; }
+}
+
+function talkCleanup(id) {
+  if (talkAudioCtx[id]) { talkAudioCtx[id].close().catch(function(){}); delete talkAudioCtx[id]; }
+  if (talkStreams[id]) { talkStreams[id].getTracks().forEach(function(t) { t.stop(); }); delete talkStreams[id]; }
+  delete talkWS[id];
+  var btn = document.getElementById('lvTalk-'+id);
+  if (btn) { btn.style.background = ''; btn.style.color = '#40c4ff'; btn.textContent = '🎤'; }
+}
+
+// ===== FULLSCREEN =====
+function fullscreenVid(id) {
+  const v = document.getElementById('lvVid-'+id);
+  if (!v) return;
+  if (v.requestFullscreen) v.requestFullscreen();
+  else if (v.webkitRequestFullscreen) v.webkitRequestFullscreen();
+}
+
+// ===== GRID LAYOUT =====
+var currentLayout = 2;
+function setLayout(n) {
+  currentLayout = n;
+  var g = document.getElementById('liveGrid');
+  g.className = 'live-grid cols'+n;
+  var btns = document.querySelectorAll('#tab-live .toolbar button');
+  for (var i=0; i<btns.length; i++) {
+    var txt = btns[i].textContent;
+    if (txt==='■'||txt==='■■'||txt==='■■■'||txt==='■■■■') {
+      btns[i].className = 'btn btn-sm '+(i+1===n?'btn-primary':'btn-outline');
+    }
+  }
+}
+
+// ===== PTZ CONTROL =====
+let ptzTimers = {};
+
+async function ptzStart(id, action) {
+  const spd = document.getElementById('ptzSpd-'+id);
+  const speed = spd ? parseInt(spd.value) : 3;
+  const r = await api('/api/ptz/'+id+'/'+action+'?speed='+speed, {method:'POST'});
+  if (r.status!=='ok') toast(r.error||'云台指令失败','e');
+}
+
+async function ptzStop(id) {
+  if (ptzTimers[id]) { clearTimeout(ptzTimers[id]); delete ptzTimers[id]; }
+  await api('/api/ptz/'+id+'/stop', {method:'POST'});
+}
+
+async function ptzPreset(id, num) {
+  const r = await api('/api/ptz/'+id+'/preset/'+num, {method:'POST'});
+  if (r.status!=='ok') toast(r.error||'预置位调用失败','e');
+}
+
+// ===== DIRECTOR =====
+let dirSources = [];
+let selectedSource = null;
+let dirRefreshTimer = null;
+
+async function loadDirector() {
+  const status = await api('/api/director');
+  if (!status || status.error) return;
+
+  const sources = await api('/api/director/sources');
+  dirSources = sources || [];
+
+  document.getElementById('dirStatus').textContent =
+    'PGM: ' + (status.pgm?.status || 'idle') +
+    ' | 信号: ' + (sources?.length || 0) + ' 路';
+
+  const pgmVid = document.getElementById('dirPGMVid');
+  const pgmPlace = document.getElementById('dirPGMPlaceholder');
+  if (status.pgm?.status === 'live') {
+    pgmVid.style.display = 'block';
+    pgmPlace.style.display = 'none';
+    if (!pgmVid.src || pgmVid.src.indexOf('director') < 0) {
+      pgmVid.src = MTX_HLS + status.pgm.output_url;
+    }
+    pgmVid.play().catch(()=>{});
+  } else {
+    pgmVid.style.display = 'none';
+    pgmPlace.style.display = 'flex';
+  }
+
+  const grid = document.getElementById('dirPreview');
+  if (!grid.children.length || grid.children.length !== sources.length) {
+    renderPreviewGrid(grid, sources);
+  } else {
+    grid.querySelectorAll('.dir-sub').forEach(el => {
+      el.classList.toggle('active', el.dataset.sourceId === selectedSource);
+    });
+  }
+
+  clearTimeout(dirRefreshTimer);
+  dirRefreshTimer = setTimeout(loadDirector, 5000);
+}
+
+function renderPreviewGrid(grid, sources) {
+  let html = '';
+  for (const s of sources) {
+    const active = selectedSource === s.id ? ' active' : '';
+    if (s.type === 'black' || s.type === 'image') {
+      html += '<div class="dir-preview dir-sub' + active + '" data-source-id="' + s.id + '" onclick="selectSource(\'' + s.id + '\')">';
+      html += '<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#1a1a2e;color:#3a4a5a;font-size:13px">';
+      html += s.type === 'black' ? '⏹ 黑场' : '📊 测试图';
+      html += '</div>';
+      html += '<div class="dir-label">' + esc(s.name) + '</div></div>';
+      continue;
+    }
+    const hlsUrl = '/live/' + s.device_id + '/';
+    html += '<div class="dir-preview dir-sub' + active + '" data-source-id="' + s.id + '" onclick="selectSource(\'' + s.id + '\')">';
+    html += '<video muted autoplay playsinline src="' + MTX_HLS + hlsUrl + '"></video>';
+    html += '<div class="dir-label">' + esc(s.name) + '</div></div>';
+  }
+  if (sources.length === 0) {
+    html = '<div style="grid-column:1/-1;display:flex;align-items:center;justify-content:center;color:#3a4a5a;font-size:13px;min-height:200px">暂无信号源</div>';
+  }
+  grid.innerHTML = html;
+
+  setTimeout(() => {
+    grid.querySelectorAll('video').forEach(v => v.play().catch(()=>{}));
+  }, 500);
+}
+
+function selectSource(id) {
+  selectedSource = id;
+  document.querySelectorAll('#dirPreview .dir-sub').forEach(el => {
+    el.classList.toggle('active', el.dataset.sourceId === id);
+  });
+}
+
+async function switchSource() {
+  const id = selectedSource || (dirSources[0] && dirSources[0].id);
+  if (!id) { toast('请先选择一个信号源', 'i'); return; }
+  const r = await api('/api/director/switch', { method: 'POST', body: { source_id: id, transition: 'cut' } });
+  if (r.status === 'switched') {
+    toast('✅ 已切换');
+    loadDirector();
+  } else {
+    toast(r.error || '切换失败', 'e');
+  }
+}
+
+async function stopPGM() {
+  const r = await api('/api/director/stop', { method: 'POST' });
+  if (r.status === 'stopped') {
+    toast('PGM 已停止');
+    loadDirector();
+  }
+}
+
+async function startPush() {
+  const url = document.getElementById('pushURL').value.trim();
+  if (!url) { toast('请输入推流地址','i'); return; }
+  if (!url.startsWith('rtmp://')) { toast('推流地址必须以 rtmp:// 开头','e'); return; }
+  const r = await api('/api/director/push', { method: 'POST', body: { url } });
+  if (r.status === 'push_set') {
+    toast('✅ 正在推流到: '+url);
+  } else {
+    toast(r.error||'推流失败','e');
+  }
+}
+
+async function stopPush() {
+  const r = await api('/api/director/push', { method: 'POST', body: { url: '' } });
+  if (r.status === 'push_stopped') {
+    toast('推流已停止');
+    document.getElementById('pushURL').value = '';
+  }
+}
+
+// ===== RESOLUTION SWITCH =====
+async function changeRes(id, res) {
+  var body;
+  if (res === 'auto') {
+    body = JSON.stringify({});
+  } else {
+    var parts = res.split('x');
+    body = JSON.stringify({width: parseInt(parts[0]), height: parseInt(parts[1])});
+  }
+  var btn = document.getElementById('lvBtn-'+id);
+  var wasRunning = proxyStatus[id] || false;
+
+  var r = await fetch(API+'/api/proxy/config/'+id, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: body
+  });
+  const data = await r.json();
+  if (data.status === 'updated') {
+    toast('已切换到 '+res);
+    if (wasRunning && data.deviceId === id) {
+      if (window['hls_'+id]) { window['hls_'+id].destroy(); delete window['hls_'+id]; }
+      if (window['webrtc_'+id]) { window['webrtc_'+id].close(); delete window['webrtc_'+id]; }
+      var vid2 = document.getElementById('lvVid-'+id);
+      if (vid2) {
+        // Wait for stream to be ready after resolution change
+        await new Promise(function(r) {
+          var timeout = 0;
+          var check = function() {
+            fetch(MTX_HLS+'/live/'+id+'/index.m3u8', {credentials:'include'}).then(function(resp){
+              if (resp.ok) r(); else { timeout++; if(timeout>30)r(); else setTimeout(check,500); }
+            }).catch(function(){ timeout++; if(timeout>30)r(); else setTimeout(check,500); });
+          };
+          check();
+        });
+        var h2 = new Hls({
+          xhrSetup: function(x, u) { x.withCredentials = true; }
+        });
+        h2.loadSource(MTX_HLS+'/live/'+id+'/index.m3u8');
+        h2.attachMedia(vid2);
+        h2.on(Hls.Events.MANIFEST_PARSED, function() { vid2.play().catch(function(){}); });
+        window['hls_'+id] = h2;
+        // Async WebRTC attempt
+        startWebRTC(vid2, id).catch(function(){});
+      }
+    }
+  } else {
+    toast(data.error || '切换失败','e');
+  }
+}
+
+// Wrap switchTab to add director support
+const _origSwitch = switchTab;
+switchTab = function(name) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.content').forEach(c=>c.classList.remove('active'));
+  const tab = document.querySelector(`.tab[onclick*="${name}"]`);
+  if (tab) tab.classList.add('active');
+  const content = document.getElementById('tab-'+name);
+  if (content) content.classList.add('active');
+  if (name==='live') renderLive();
+  if (name==='recordings') loadRecordings();
+  if (name==='schedule') loadSchedules();
+  if (name==='snapshots') loadSnapshots();
+  if (name==='director') loadDirector();
+  if (name==='motion') loadMotion();
+  if (name==='faces') loadFaces();
+  if (name==='discover') loadDiscover();
+  if (name==='status') loadStatus();
+};
+
+// ===== DRAG & DROP (card reordering) =====
+var dragSrcId = null;
+
+function dragStart(e, id) {
+  dragSrcId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', id);
+  document.getElementById('lv-'+id).classList.add('dragging');
+}
+
+function dragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  var card = e.target.closest('.live-card');
+  if (card) card.classList.add('drag-over');
+}
+
+function dropCard(e, targetId) {
+  e.preventDefault();
+  document.querySelectorAll('.live-card').forEach(function(c) {
+    c.classList.remove('drag-over', 'dragging');
+  });
+  if (dragSrcId === targetId) return;
+  swapCards(dragSrcId, targetId);
+  saveCardOrder();
+  dragSrcId = null;
+}
+
+function dragEnd(e) {
+  document.querySelectorAll('.live-card').forEach(function(c) {
+    c.classList.remove('drag-over', 'dragging');
+  });
+}
+
+function swapCards(id1, id2) {
+  var grid = document.getElementById('liveGrid');
+  var c1 = document.getElementById('lv-'+id1);
+  var c2 = document.getElementById('lv-'+id2);
+  if (!c1 || !c2) return;
+  if (c1.nextElementSibling === c2) {
+    grid.insertBefore(c2, c1);
+  } else if (c2.nextElementSibling === c1) {
+    grid.insertBefore(c1, c2);
+  } else {
+    var c2Next = c2.nextElementSibling;
+    grid.insertBefore(c1, c2);
+    if (c2Next) grid.insertBefore(c2, c2Next);
+    else grid.appendChild(c2);
+  }
+}
+
+function loadCardOrder() {
+  try {
+    var data = localStorage.getItem('netcam_card_order');
+    return data ? JSON.parse(data) : null;
+  } catch(e) { return null; }
+}
+
+function saveCardOrder() {
+  var grid = document.getElementById('liveGrid');
+  var ids = [];
+  grid.querySelectorAll('.live-card').forEach(function(c) {
+    var id = c.id.replace('lv-', '');
+    if (id) ids.push(id);
+  });
+  try {
+    localStorage.setItem('netcam_card_order', JSON.stringify(ids));
+  } catch(e) {}
+}
+
+// ===== MOTION DETECTION =====
+async function loadMotion() {
+  var devs = await api('/api/devices');
+  var el = document.getElementById('motionCards');
+  if (!devs.length) { el.innerHTML = '<div style="color:#3a4a5a;padding:20px">暂无摄像头</div>'; return; }
+
+  var html = '';
+  for (var d of devs) {
+    var cfg = await api('/api/motion/config/'+d.id);
+    var events = await api('/api/motion/events/'+d.id+'?limit=10');
+    var on = cfg && cfg.enabled;
+    html += '<div class="live-card" style="padding:10px">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+    html += '<span style="font-size:13px;font-weight:500">'+esc(d.name)+'</span>';
+    html += '<button class="btn btn-sm '+(on?'btn-danger':'btn-success')+'" onclick="toggleMotion(\''+d.id+'\','+(!on)+')">'+(on?'关闭检测':'开启检测')+'</button>';
+    html += '</div>';
+    html += '<div style="display:flex;gap:12px;font-size:11px;color:#6b8299;margin-bottom:6px">';
+    html += '灵敏度: <input type="range" min="0.1" max="0.9" step="0.1" value="'+(cfg?cfg.sensitivity:0.3)+'" ';
+    html += 'onchange="setMotionSens(\''+d.id+'\',this.value)" style="width:60px"> ';
+    html += '冷却: <input type="number" value="'+(cfg?cfg.cooldown_sec:30)+'" min="5" max="300" ';
+    html += 'onchange="setMotionCool(\''+d.id+'\',this.value)" style="width:50px;background:#0a121a;border:1px solid #1e2d3d;color:#8aa0b8;border-radius:2px;padding:1px 3px">秒';
+    html += '</div>';
+    html += '<div style="font-size:11px;color:#5a7288">最近事件:</div>';
+    if (events && events.length) {
+      html += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">';
+      for (var e of events.slice(0,6)) {
+        html += '<a href="/snapshots/motion_'+d.id+'/'+e.snapshot_path.split('/').pop()+'" target="_blank" ';
+        html += 'style="width:60px;height:40px;overflow:hidden;border-radius:3px;border:1px solid #1a2a3a">';
+        html += '<img src="/snapshots/motion_'+d.id+'/'+e.snapshot_path.split('/').pop()+'" style="width:100%;height:100%;object-fit:cover"></a>';
+      }
+      html += '</div>';
+    } else {
+      html += '<div style="color:#3a4a5a;font-size:11px;margin-top:4px">暂无事件</div>';
+    }
+    html += '</div>';
+  }
+  el.innerHTML = html;
+
+  var allEvents = await api('/api/motion/events/all?limit=50');
+  var tl = document.getElementById('motionTimeline');
+  if (!allEvents || !allEvents.length) { tl.innerHTML = ''; return; }
+  var tlHtml = '<div class="card"><h3>📊 运动检测时间轴</h3><div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:8px">';
+  for (var e of allEvents.slice(0,50)) {
+    var ts = new Date(e.detected_at);
+    var timeStr = ts.getHours().toString().padStart(2,'0')+':'+ts.getMinutes().toString().padStart(2,'0');
+    var dev = devs.find(function(x){return x.id===e.device_id});
+    tlHtml += '<a href="/snapshots/motion_'+e.device_id+'/'+e.snapshot_path.split('/').pop()+'" target="_blank" ';
+    tlHtml += 'title="'+(dev?esc(dev.name):e.device_id)+' '+ts.toLocaleString()+'" ';
+    tlHtml += 'style="width:50px;height:34px;overflow:hidden;border-radius:3px;border:1px solid #8a2a2a;position:relative">';
+    tlHtml += '<img src="/snapshots/motion_'+e.device_id+'/'+e.snapshot_path.split('/').pop()+'" style="width:100%;height:100%;object-fit:cover">';
+    tlHtml += '<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(200,0,0,0.6);color:#fff;font-size:8px;text-align:center">'+timeStr+'</div>';
+    tlHtml += '</a>';
+  }
+  tlHtml += '</div></div>';
+  tl.innerHTML = tlHtml;
+}
+
+async function toggleMotion(id, enable) {
+  var cfg = {device_id: id, enabled: enable, sensitivity: 0.3, cooldown_sec: 30};
+  await api('/api/motion/config/'+id, {method:'POST', body:cfg});
+  toast(enable?'运动检测已开启':'已关闭');
+  loadMotion();
+}
+
+async function setMotionSens(id, val) {
+  var cfg = await api('/api/motion/config/'+id);
+  if (!cfg) cfg = {device_id: id, enabled: false};
+  cfg.sensitivity = parseFloat(val);
+  await api('/api/motion/config/'+id, {method:'POST', body:cfg});
+}
+
+async function setMotionCool(id, val) {
+  var cfg = await api('/api/motion/config/'+id);
+  if (!cfg) cfg = {device_id: id, enabled: false};
+  cfg.cooldown_sec = parseInt(val);
+  await api('/api/motion/config/'+id, {method:'POST', body:cfg});
+}
+
+async function addMotion() {
+  var devs = await api('/api/devices');
+  if (!devs.length) { toast('先添加摄像头','e'); return; }
+  for (var d of devs) {
+    await api('/api/motion/config/'+d.id, {method:'POST', body:{device_id:d.id, enabled:true, sensitivity:0.3, cooldown_sec:30}});
+  }
+  toast('已为所有设备开启运动检测');
+  loadMotion();
+}
+
+// ===== FACES =====
+async function loadFaces() {
+  document.getElementById('faceStatus').textContent = '加载中...';
+  var faces = await api('/api/faces');
+  var faceList = document.getElementById('faceList');
+  if (!faces || !faces.length) {
+    faceList.innerHTML = '<div style="color:#5a7288;font-size:12px;padding:20px;text-align:center">暂无检测到人脸。开启运动检测后，有人经过时会自动捕捉。</div>';
+  } else {
+    var html = '';
+    for (var f of faces) {
+      var thumbSrc = f.thumb_path ? '/' + f.thumb_path.replace(/^.*?data\//, '') : '';
+      html += '<div style="background:#111b25;border:1px solid #1a2a3a;border-radius:6px;overflow:hidden">';
+      html += '<div style="width:100%;aspect-ratio:1;background:#060a0f;display:flex;align-items:center;justify-content:center;overflow:hidden">';
+      if (thumbSrc) {
+        html += '<img src="/faces/' + thumbSrc.split('/').pop() + '" style="width:100%;height:100%;object-fit:cover">';
+      } else {
+        html += '<span style="font-size:32px">👤</span>';
+      }
+      html += '</div>';
+      html += '<div style="padding:6px 8px">';
+      if (f.label === 'unknown') {
+        html += '<input id="flabel-'+f.id+'" placeholder="输入姓名..." style="width:100%;background:#0d151f;border:1px solid #1a2a3a;color:#d0d8e0;padding:3px 6px;border-radius:3px;font-size:11px" onkeydown="if(event.key===\'Enter\')saveFaceLabel(\''+f.id+'\')">';
+      } else {
+        html += '<div style="font-size:12px;font-weight:500">'+f.label+'</div>';
+      }
+      html += '<div style="font-size:10px;color:#5a7288;margin-top:2px">看到 '+f.seen_count+' 次</div>';
+      html += '<div style="font-size:10px;color:#5a7288">最后 '+fmtTime(f.last_seen_at)+'</div>';
+      html += '</div></div>';
+    }
+    faceList.innerHTML = html;
+  }
+
+  var events = await api('/api/face-events?limit=50');
+  var tb = document.getElementById('faceEventTable');
+  if (!events || !events.length) {
+    tb.innerHTML = '<tr><td colspan="5" style="color:#5a7288;text-align:center;padding:12px">暂无识别记录</td></tr>';
+  } else {
+    var html = '';
+    for (var e of events) {
+      var thumbSrc2 = e.thumb_path ? '/faces/' + e.thumb_path.split('/').pop() : '';
+      html += '<tr>';
+      html += '<td style="white-space:nowrap">'+fmtTime(e.detected_at)+'</td>';
+      html += '<td>'+e.device_id.slice(0,8)+'</td>';
+      html += '<td>'+(e.label==='unknown'?'❓ '+e.label: e.label)+'</td>';
+      html += '<td>'+(e.confidence>0?(e.confidence*100).toFixed(0)+'%':' - ')+'</td>';
+      html += '<td>';
+      if (thumbSrc2) {
+        html += '<img src="'+thumbSrc2+'" style="width:40px;height:40px;border-radius:4px;object-fit:cover;cursor:pointer" onclick="window.open(this.src)">';
+      } else {
+        html += '-';
+      }
+      html += '</td></tr>';
+    }
+    tb.innerHTML = html;
+  }
+  document.getElementById('faceStatus').textContent = '✓ ' + (faces ? faces.length : 0) + ' 个人脸';
+}
+
+async function saveFaceLabel(faceId) {
+  var input = document.getElementById('flabel-'+faceId);
+  var label = input.value.trim();
+  if (!label) return;
+  await api('/api/faces/'+faceId, {method: 'PUT', body: {label: label}});
+  loadFaces();
+}
+
+function fmtTime(t) {
+  if (!t) return '-';
+  try { return new Date(t).toLocaleString(); } catch(e) { return t; }
+}
+
+// ===== GROUPS =====
+async function showGroupManager() {
+  var groups = await api('/api/groups');
+  var el = document.getElementById('groupList');
+  if (!groups || !groups.length) {
+    el.innerHTML = '<div style="color:#5a7288;font-size:12px">暂无分组</div>';
+  } else {
+    var html = '';
+    for (var g of groups) {
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:#0d151f;border:1px solid #1a2a3a;border-radius:4px;margin-bottom:4px">';
+      html += '<span style="flex:1;font-size:12px">'+esc(g.name)+' <span style="color:#5a7288">('+g.count+' 设备)</span></span>';
+      if (g.name !== '未分组') {
+        html += '<button class="btn btn-sm btn-outline" onclick="renameGroup(\''+escAttr(g.name)+'\')" style="font-size:10px">✏️</button>';
+        html += '<button class="btn btn-sm btn-outline" onclick="deleteGroup(\''+escAttr(g.name)+'\')" style="font-size:10px;color:#ef5350">✕</button>';
+      }
+      html += '</div>';
+    }
+    el.innerHTML = html;
+  }
+  document.getElementById('newGroupName').value = '';
+  document.getElementById('modalGroupManager').style.display='flex';
+}
+
+async function renameGroup(oldName) {
+  var newName = prompt('重命名分组 "'+oldName+'" 为:', oldName);
+  if (!newName || newName === oldName) return;
+  await api('/api/groups', {method:'PUT', body:{old: oldName, new: newName}});
+  showGroupManager();
+  renderLive();
+}
+
+async function deleteGroup(name) {
+  if (!confirm('将 "'+name+'" 分组下的设备移回未分组？')) return;
+  await api('/api/groups', {method:'PUT', body:{old: name, new: ''}});
+  showGroupManager();
+  renderLive();
+}
+
+async function createGroup() {
+  var name = document.getElementById('newGroupName').value.trim();
+  if (!name) { toast('请输入分组名','e'); return; }
+  // "Create" by renaming "未分组" (no-op if no devices in 未分组)
+  await api('/api/groups', {method:'PUT', body:{old: '', new: name}});
+  toast('已创建分组: '+name);
+  document.getElementById('newGroupName').value = '';
+  showGroupManager();
+  renderLive();
+}
+
+// ===== DEVICE DISCOVERY =====
+var discoverTimer = null;
+var discoverIPs = [];
+
+function getDeviceIcon(type) {
+  var map = {
+    'camera': '📷',
+    'nvr': '🎥',
+    'ac': '❄️',
+    'appliance': '🏠',
+    'router': '📡',
+    'display': '📺',
+    'nas': '💾',
+    'printer': '🖨️',
+    'smart-home': '🏡',
+    'sensor': '🔍',
+    'usb': '🔌'
+  };
+  return map[type] || '📱';
+}
+
+async function startScan() {
+  var btn = document.getElementById('scanBtn');
+  btn.textContent = '⏳ 扫描中...';
+  btn.disabled = true;
+  document.getElementById('scanProgress').textContent = '正在启动扫描...';
+  var r = await api('/api/discover/start', {method:'POST'});
+  if (r.status === 'scan_started') {
+    if (discoverTimer) clearInterval(discoverTimer);
+    discoverTimer = setInterval(loadDiscover, 2000);
+    setTimeout(loadDiscover, 500);
+  } else {
+    toast(r.error || '启动失败', 'e');
+    btn.textContent = '🔍 扫描局域网';
+    btn.disabled = false;
+  }
+}
+
+async function stopScan() {
+  await api('/api/discover/stop', {method:'POST'});
+  if (discoverTimer) { clearInterval(discoverTimer); discoverTimer = null; }
+  document.getElementById('scanBtn').textContent = '🔍 扫描局域网';
+  document.getElementById('scanBtn').disabled = false;
+  document.getElementById('scanProgress').textContent = '已停止';
+  loadDiscover();
+}
+
+async function loadDiscover() {
+  var data = await api('/api/discover/status');
+  if (!data || data.error) return;
+
+  var progress = document.getElementById('scanProgress');
+  if (data.scanning) {
+    progress.textContent = '⏳ ' + data.progress;
+    document.getElementById('scanBtn').textContent = '⏳ 扫描中...';
+    document.getElementById('scanBtn').disabled = true;
+  } else {
+    progress.textContent = data.progress;
+    document.getElementById('scanBtn').textContent = '🔍 扫描局域网';
+    document.getElementById('scanBtn').disabled = false;
+    if (discoverTimer) { clearInterval(discoverTimer); discoverTimer = null; }
+  }
+
+  var results = data.results || {};
+  var ips = Object.keys(results);
+  discoverIPs = ips;
+
+  var tbody = document.getElementById('discoverTable');
+  if (ips.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#3a4a5a;padding:20px">' +
+      (data.scanning ? '扫描中，请稍候...' : '暂无发现设备，点击「扫描局域网」开始') + '</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = ips.map(function(ip) {
+    var d = results[ip];
+    var icon = getDeviceIcon(d.device_type);
+    var typeClass = 'device-type-' + (d.device_type || 'unknown');
+    var brand = d.brand_cn || d.brand || '-';
+    var ports = (d.ports || []).join(', ') || '-';
+    var proto = d.protocol || '-';
+    var method = d.method || '-';
+    var conf = d.confidence || 0;
+    var rtsp = (d.rtsp_urls || []).join('<br>') || '-';
+    var macInfo = d.mac_vendor ? ' (' + d.mac_vendor + ')' : '';
+    return '<tr>' +
+      '<td><input type="checkbox" class="discover-checkbox" value="' + ip + '" ' +
+        (d.device_type === 'camera' || d.device_type === 'usb' ? 'checked' : '') + '></td>' +
+      '<td><span class="device-icon ' + typeClass + '">' + icon + '</span> ' + esc(d.device_type || '未知') + '</td>' +
+      '<td>' + esc(brand) + esc(macInfo) + '</td>' +
+      '<td>' + esc(ip) + '</td>' +
+      '<td>' + ports + '</td>' +
+      '<td>' + proto.toUpperCase() + '</td>' +
+      '<td>' + method + '</td>' +
+      '<td>' + conf + '%</td>' +
+      '<td style="font-size:11px;color:#5a7288;max-width:200px;word-break:break-all">' + rtsp + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+function toggleAllDiscover(checked) {
+  document.querySelectorAll('#discoverTable .discover-checkbox').forEach(function(cb) {
+    cb.checked = checked;
+  });
+}
+
+async function importSelected() {
+  var selected = [];
+  document.querySelectorAll('#discoverTable .discover-checkbox:checked').forEach(function(cb) {
+    selected.push(cb.value);
+  });
+  if (selected.length === 0) {
+    toast('请先选择要导入的设备', 'i');
+    return;
+  }
+  var statusEl = document.getElementById('importStatus');
+  statusEl.textContent = '导入中 (' + selected.length + ' 个)...';
+  var r = await api('/api/discover/import', {method:'POST', body:{ips: selected}});
+  if (r.status === 'ok') {
+    toast('✅ 成功导入 ' + r.imported + '/' + r.requested + ' 个设备');
+    statusEl.textContent = '已导入 ' + r.imported + '/' + r.requested + ' 个';
+    renderLive();
+    loadDiscover();
+  } else {
+    toast(r.error || '导入失败', 'e');
+    statusEl.textContent = '';
+  }
+}
+
+// ===== V4L2 Camera Controls =====
+function showV4L2(id) {
+  var v4l2Id = 'v4l2-panel-'+id;
+  var existing = document.getElementById(v4l2Id);
+  if (existing) { existing.style.display = existing.style.display==='none'?'block':'none'; return; }
+
+  var panel = document.createElement('div');
+  panel.id = v4l2Id;
+  panel.style.cssText = 'position:fixed;top:60px;right:20px;width:320px;max-height:80vh;overflow-y:auto;background:#0d151f;border:1px solid #1e2d3d;border-radius:8px;padding:16px;z-index:1000;box-shadow:0 4px 20px rgba(0,0,0,0.5);';
+  panel.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><b>摄像头参数</b><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:#6b8299;cursor:pointer;font-size:16px">✕</button></div><div style="color:#6b8299;font-size:12px" id="v4l2-loading-'+id+'">加载中...</div><div id="v4l2-ctrls-'+id+'"></div>';
+  document.body.appendChild(panel);
+
+  api('/api/v4l2/'+id).then(function(data) {
+    var el = document.getElementById('v4l2-ctrls-'+id);
+    var loading = document.getElementById('v4l2-loading-'+id);
+    if (!el) return;
+    loading.style.display = 'none';
+    if (!data || !data.controls) { el.innerHTML = '<div style="color:#ef9a9a">获取参数失败</div>'; return; }
+    el.innerHTML = data.controls.map(function(c) {
+      var isBool = c.min===0 && c.max===1 && c.step===1;
+      if (isBool) {
+        return '<div style="margin:6px 0;display:flex;justify-content:space-between;align-items:center">'+
+          '<span style="font-size:13px;color:#8aa0b8">'+c.name+'</span>'+
+          '<label style="position:relative;width:44px;height:22px"><input type="checkbox" '+(c.value?'checked':'')+
+            ' onchange="setV4L2(\''+id+'\',\''+c.name+'\',this.checked?1:0)" style="opacity:0;width:0;height:0">'+
+            '<span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:'+(c.value?'#00c8ff':'#1a2a3a')+';border-radius:11px;transition:.3s"></span>'+
+          '</label></div>';
+      }
+      return '<div style="margin:8px 0">'+
+        '<div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:#8aa0b8">'+c.name+'</span><span style="color:#00c8ff" id="v4l2-val-'+id+'-'+c.name+'">'+c.value+'</span></div>'+
+        '<input type="range" min="'+c.min+'" max="'+c.max+'" step="'+c.step+'" value="'+c.value+'" '+
+          'oninput="document.getElementById(\'v4l2-val-'+id+'-'+c.name+'\').textContent=this.value" '+
+          'onchange="setV4L2(\''+id+'\',\''+c.name+'\',this.value)" '+
+          'style="width:100%;height:4px;background:#1a2a3a;outline:none;-webkit-appearance:none;border-radius:2px">'+
+      '</div>';
+    }).join('');
+  }).catch(function(e) { var el = document.getElementById('v4l2-loading-'+id); if(el) el.textContent='加载失败: '+e.message; });
+}
+
+function setV4L2(id, control, value) {
+  api('/api/v4l2/'+id, {method:'PUT', body:{control:control, value:value}}).then(function(r) {
+    if (r.status==='ok') toast(control+' = '+value);
+  }).catch(function(e) { toast('设置失败','e'); });
+}
+
+// ===== Phone Camera Controls =====
+function showPhoneCam(id) {
+  var pid = 'phone-panel-'+id;
+  var existing = document.getElementById(pid);
+  if (existing) { existing.style.display = existing.style.display==='none'?'block':'none'; return; }
+  var panel = document.createElement('div');
+  panel.id = pid;
+  panel.style.cssText = 'position:fixed;top:60px;right:20px;width:320px;max-height:80vh;overflow-y:auto;background:#0d151f;border:1px solid #1e2d3d;border-radius:8px;padding:16px;z-index:1000;box-shadow:0 4px 20px rgba(0,0,0,0.5);';
+  panel.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><b>📱 手机相机设置</b><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:#6b8299;cursor:pointer;font-size:16px">✕</button></div><div id="phone-ctrls-'+id+'"></div>';
+  document.body.appendChild(panel);
+  var html = '';
+  // 切换前后摄像头
+  html += '<div style="margin:6px 0;display:flex;gap:4px">';
+  html += '<button class="btn btn-sm btn-outline" onclick="phoneCmd(\''+id+'\',\'cam_switch?facing=front\')" style="flex:1;padding:6px">📷 前置</button>';
+  html += '<button class="btn btn-sm btn-outline" onclick="phoneCmd(\''+id+'\',\'cam_switch?facing=back\')" style="flex:1;padding:6px">📷 后置</button>';
+  html += '</div>';
+  // 闪光灯 / 镜像（带参数）
+  html += '<div style="margin:6px 0;display:flex;gap:4px">';
+  html += '<button class="btn btn-sm btn-outline" onclick="phoneCmd(\''+id+'\',\'torch?on=true\')" style="flex:1;padding:6px">🔦 开灯</button>';
+  html += '<button class="btn btn-sm btn-outline" onclick="phoneCmd(\''+id+'\',\'torch?on=false\')" style="flex:1;padding:6px">🔦 关灯</button>';
+  html += '<button class="btn btn-sm btn-outline" onclick="phoneCmd(\''+id+'\',\'mirror?enabled=true\')" style="flex:1;padding:6px">🪞 镜像</button>';
+  html += '<button class="btn btn-sm btn-outline" onclick="phoneCmd(\''+id+'\',\'mirror?enabled=false\')" style="flex:1;padding:6px">🪞 原图</button>';
+  html += '</div>';
+  // 分辨率
+  html += '<div style="margin:8px 0"><label style="font-size:12px;color:#8aa0b8">分辨率</label><select onchange="phoneCmd(\''+id+'\',\'resolution?value=\'+this.value)" style="width:100%;background:#0a121a;color:#8aa0b8;border:1px solid #1e2d3d;border-radius:4px;padding:4px;font-size:12px;margin-top:4px">';
+  html += '<option value="640x480">480p (640x480)</option><option value="864x480">480p (864x480)</option><option value="1280x720" selected>720p (1280x720)</option><option value="1920x1080">1080p (1920x1080)</option><option value="3840x2160">4K (3840x2160)</option>';
+  html += '</select></div>';
+  // 帧率
+  html += '<div style="margin:8px 0"><label style="display:flex;justify-content:space-between;font-size:12px;color:#8aa0b8">帧率 <span id="phone-fps-'+id+'">15</span></label><input type="range" min="5" max="30" step="1" value="15" oninput="document.getElementById(\'phone-fps-'+id+'\').textContent=this.value" onchange="phoneCmd(\''+id+'\',\'fps?value=\'+this.value)" style="width:100%"></div>';
+  // 画质
+  html += '<div style="margin:8px 0"><label style="display:flex;justify-content:space-between;font-size:12px;color:#8aa0b8">画质 <span id="phone-quality-'+id+'">80</span></label><input type="range" min="10" max="100" step="5" value="80" oninput="document.getElementById(\'phone-quality-'+id+'\').textContent=this.value" onchange="phoneCmd(\''+id+'\',\'quality?value=\'+this.value)" style="width:100%"></div>';
+  // 变焦
+  html += '<div style="margin:8px 0"><label style="display:flex;justify-content:space-between;font-size:12px;color:#8aa0b8">数码变焦 <span id="phone-zoom-'+id+'">1.0x</span></label><input type="range" min="1" max="8" step="0.1" value="1" oninput="document.getElementById(\'phone-zoom-'+id+'\').textContent=this.value+\'x\'" onchange="phoneCmd(\''+id+'\',\'zoom?value=\'+this.value)" style="width:100%"></div>';
+  // 曝光补偿
+  html += '<div style="margin:8px 0"><label style="display:flex;justify-content:space-between;font-size:12px;color:#8aa0b8">曝光补偿 <span id="phone-ev-'+id+'">0.0</span></label><input type="range" min="-3" max="3" step="0.25" value="0" oninput="document.getElementById(\'phone-ev-'+id+'\').textContent=parseFloat(this.value).toFixed(2)" onchange="phoneCmd(\''+id+'\',\'exposure?value=\'+this.value)" style="width:100%"></div>';
+  // 白平衡
+  html += '<div style="margin:8px 0"><label style="font-size:12px;color:#8aa0b8">白平衡</label><select onchange="phoneCmd(\''+id+'\',\'white_balance?mode=\'+this.value)" style="width:100%;background:#0a121a;color:#8aa0b8;border:1px solid #1e2d3d;border-radius:4px;padding:4px;font-size:12px;margin-top:4px">';
+  html += '<option value="auto" selected>自动</option><option value="sunny">晴天</option><option value="cloudy">阴天</option><option value="fluorescent">荧光灯</option><option value="incandescent">白炽灯</option>';
+  html += '</select></div>';
+  // 状态行
+  html += '<div style="margin:8px 0;color:#6b8299;font-size:11px;border-top:1px solid #1a2a3a;padding-top:8px" id="phone-status-'+id+'"></div>';
+  document.getElementById('phone-ctrls-'+id).innerHTML = html;
+}
+
+function phoneCmd(id, cmd) {
+  var st = document.getElementById('phone-status-'+id);
+  if (st) st.textContent = '⏳ '+cmd+'...';
+  fetch(API+'/api/phone/'+id+'/'+cmd, {method:'POST'}).then(function(r){
+    return r.json();
+  }).then(function(data){
+    if (data.status==='ok') { if(st) st.textContent = '✅ '+data.message; toast(data.message); }
+    else { if(st) st.textContent = '❌ '+(data.message||'失败'); }
+  }).catch(function(e){
+    if(st) st.textContent = '❌ '+e.message;
+    toast('手机连接失败','e');
+  });
+}
+
+</script>
+</body>
+</html>
