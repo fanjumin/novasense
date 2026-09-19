@@ -1,0 +1,7 @@
+# novasense-ai sidecar — CPU 推理基线（onnxruntime）
+# RK3576/RK3588 NPU 加速(RKNN)为 P1 独立镜像 tag,契约不变。
+fastapi>=0.111
+uvicorn>=0.30
+onnxruntime>=1.17
+numpy>=1.26
+pillow>=10.3

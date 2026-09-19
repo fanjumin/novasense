@@ -15,7 +15,13 @@
   "config": {
     "gateway_host": "http://localhost:8899",
     "gateway_password": "admin",
-    "refresh_interval": 5
+    "refresh_interval": 5,
+    "analyze_api_key": "",
+    "llm_base_url": "",
+    "llm_api_key": "",
+    "llm_model": "gpt-4o-mini",
+    "alert_threshold": 0.8,
+    "analyze_min_interval": 60
   },
 
   "permissions": [

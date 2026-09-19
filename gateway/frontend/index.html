@@ -1638,9 +1638,14 @@ async function loadMotion() {
     if (events && events.length) {
       html += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">';
       for (var e of events.slice(0,6)) {
+        var aiBadge = '';
+        if (e.ai_class) {
+          var aiColor = (e.ai_class === 'background') ? '#5a7288' : '#00C8FF';
+          aiBadge = '<span style="position:absolute;left:1px;bottom:1px;font-size:8px;padding:0 3px;border-radius:2px;background:rgba(10,14,20,.75);color:' + aiColor + '">' + esc(e.ai_class) + '</span>';
+        }
         html += '<a href="/snapshots/motion_'+d.id+'/'+e.snapshot_path.split('/').pop()+'" target="_blank" ';
-        html += 'style="width:60px;height:40px;overflow:hidden;border-radius:3px;border:1px solid #1a2a3a">';
-        html += '<img src="/snapshots/motion_'+d.id+'/'+e.snapshot_path.split('/').pop()+'" style="width:100%;height:100%;object-fit:cover"></a>';
+        html += 'style="position:relative;width:60px;height:40px;overflow:hidden;border-radius:3px;border:1px solid #1a2a3a">';
+        html += '<img src="/snapshots/motion_'+d.id+'/'+e.snapshot_path.split('/').pop()+'" style="width:100%;height:100%;object-fit:cover">' + aiBadge + '</a>';
       }
       html += '</div>';
     } else {

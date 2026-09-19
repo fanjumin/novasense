@@ -1,0 +1,20 @@
+{
+  "_comment": "模型权重清单：不入 git（见 fetch_models.sh）。sha256 为首拉后回填钉死；空串=允许首次下载后人工 pin。",
+  "models": [
+    {
+      "file": "yolo11n.onnx",
+      "purpose": "运动判帧(人/车过滤)",
+      "license": "AGPL-3.0 (ultralytics) — 商用注意：NovaSense 主体 MIT，此权重为依赖项需按 AGPL 合规评估或换 Apache 系模型(如 YOLO-NAS-decodes / RT-DETR-r50vd Apache)",
+      "source": "由 ultralytics 导出: pip install ultralytics && yolo export model=yolo11n.pt format=onnx",
+      "pt_url": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n.pt",
+      "sha256": ""
+    },
+    {
+      "file": "arcface_r100.onnx",
+      "purpose": "人脸嵌入向量(512d)",
+      "license": "MIT (insightface 官方权重仓库声明)",
+      "source": "https://github.com/deepinsight/insightface/tree/master/recognition/_models_ (glint360k_r100)",
+      "sha256": ""
+    }
+  ]
+}

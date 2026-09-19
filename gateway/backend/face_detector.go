@@ -16,40 +16,42 @@ import (
 
 // KnownFace — a face the user has named (persisted in DB)
 type KnownFace struct {
-	ID          string `json:"id"`
-	Label       string `json:"label"`       // user-given name, e.g. "张三"
-	FaceHash    string `json:"face_hash"`   // average hash (64-bit hex)
-	DeviceID    string `json:"device_id"`   // which device first saw this face
-	ThumbPath   string `json:"thumb_path"`  // cropped face thumbnail
-	CreatedAt   string `json:"created_at"`
-	LastSeenAt  string `json:"last_seen_at"`
-	SeenCount   int    `json:"seen_count"`
+	ID         string `json:"id"`
+	Label      string `json:"label"`      // user-given name, e.g. "张三"
+	FaceHash   string `json:"face_hash"`  // average hash (64-bit hex)
+	DeviceID   string `json:"device_id"`  // which device first saw this face
+	ThumbPath  string `json:"thumb_path"` // cropped face thumbnail
+	CreatedAt  string `json:"created_at"`
+	LastSeenAt string `json:"last_seen_at"`
+	SeenCount  int    `json:"seen_count"`
+	Embedding  []byte `json:"-"`                   // 缝B: 512d float32 小端 BLOB
+	EmbModel   string `json:"emb_model,omitempty"` // 缝B: 向量模型标识(换模型须全库重算)
 }
 
 // FaceEvent — a face detection event linked to a motion event
 type FaceEvent struct {
-	ID           string `json:"id"`
-	MotionEventID string `json:"motion_event_id"`
-	DeviceID     string `json:"device_id"`
-	FaceID       string `json:"face_id"`       // matched KnownFace.ID, empty if unknown
-	Label        string `json:"label"`         // resolved label or "unknown"
-	Confidence   float64 `json:"confidence"`   // 0.0–1.0 match confidence
-	Score        float64 `json:"score"`        // pigo detection score
-	Bounds       string  `json:"bounds"`       // JSON: {x,y,w,h}
-	ThumbPath    string  `json:"thumb_path"`   // cropped face thumbnail file
-	DetectedAt   string  `json:"detected_at"`
-	CreatedAt    string  `json:"created_at"`
+	ID            string  `json:"id"`
+	MotionEventID string  `json:"motion_event_id"`
+	DeviceID      string  `json:"device_id"`
+	FaceID        string  `json:"face_id"`    // matched KnownFace.ID, empty if unknown
+	Label         string  `json:"label"`      // resolved label or "unknown"
+	Confidence    float64 `json:"confidence"` // 0.0–1.0 match confidence
+	Score         float64 `json:"score"`      // pigo detection score
+	Bounds        string  `json:"bounds"`     // JSON: {x,y,w,h}
+	ThumbPath     string  `json:"thumb_path"` // cropped face thumbnail file
+	DetectedAt    string  `json:"detected_at"`
+	CreatedAt     string  `json:"created_at"`
 }
 
 // ============ Face Detector ============
 
 type FaceDetector struct {
-	mu        sync.Mutex
-	pigo      *pigo.Pigo
+	mu         sync.Mutex
+	pigo       *pigo.Pigo
 	classifier *pigo.Pigo
-	cascade   []byte
-	angle     float64
-	ready     bool
+	cascade    []byte
+	angle      float64
+	ready      bool
 }
 
 // FaceResult — single face found in an image
@@ -110,10 +112,10 @@ func (fd *FaceDetector) DetectFaces(imagePath string) ([]FaceResult, error) {
 
 	// Run cascade at multiple sizes
 	cParams := pigo.CascadeParams{
-		MinSize:     40,    // minimum face size (pixels)
-		MaxSize:     400,   // maximum face size
-		ShiftFactor: 0.1,   // step size (smaller = more accurate but slower)
-		ScaleFactor: 1.1,   // scale ratio between passes
+		MinSize:     40,  // minimum face size (pixels)
+		MaxSize:     400, // maximum face size
+		ShiftFactor: 0.1, // step size (smaller = more accurate but slower)
+		ScaleFactor: 1.1, // scale ratio between passes
 		ImageParams: pigo.ImageParams{
 			Pixels: pixels,
 			Rows:   rows,

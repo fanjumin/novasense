@@ -32,6 +32,11 @@ services:
       - mediamtx
     environment:
       - DATA_DIR=/app/data
+      # AI sidecar(缝A/B): 未配 AI_SIDECAR_URL 时全部行为 = v0.8.4
+      - AI_SIDECAR_URL=${AI_SIDECAR_URL:-http://127.0.0.1:8901}
+      - AI_MODE=${AI_MODE:-shadow}
+      - AI_INTERNAL_TOKEN=${AI_INTERNAL_TOKEN:-}
+      - AI_TIMEOUT_MS=${AI_TIMEOUT_MS:-800}
     volumes:
       # 持久数据（数据库、录像、抓拍）
       - ./data:/app/data
@@ -44,6 +49,31 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # ============================================
+  # novasense-ai sidecar（AI 判帧/人脸向量, P0 缝A+B）
+  # 契约: POST /v1/judge /v1/embed_face · GET /v1/healthz
+  # 模型权重不入 git: 宿主机 ai-sidecar/models/ 经 fetch_models.sh 拉取
+  # ============================================
+  ai:
+    build:
+      context: ../ai-sidecar
+      dockerfile: Dockerfile
+    container_name: novasense-ai
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8901:8901"
+    environment:
+      - AI_INTERNAL_TOKEN=${AI_INTERNAL_TOKEN:-}
+      - MODEL_DIR=/models
+    volumes:
+      - ../ai-sidecar/models:/models:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 
   # ============================================
   # RuView WiFi CSI 空间感知（方案 A 并置）

@@ -30,3 +30,7 @@ data/*.db
 
 # 插件本地库
 server-plugin/__pycache__/
+
+# AI 模型权重(勿入库,见 ai-sidecar/models.lock.json)
+ai-sidecar/models/*
+!ai-sidecar/models/.gitkeep

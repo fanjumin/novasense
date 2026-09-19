@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
-	"net"
 	"net/url"
 	"os"
 	"os/exec"
@@ -48,6 +48,7 @@ type Server struct {
 	sseClients   map[chan string]bool
 	sseMu        sync.Mutex
 	hlsClient    *http.Client // shared client with persistent cookie jar for MediaMTX HLS proxy
+	ai           *aiConfig    // AI sidecar 桥接配置(见 ai_bridge.go; nil/off 时全部缝位直通原逻辑)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -180,6 +181,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/face-events", s.handleFaceEvents)
 	s.mux.HandleFunc("/api/face-events/", s.handleFaceEventsByMotion)
 	s.mux.HandleFunc("/api/v4l2/", s.handleV4L2)
+	s.mux.HandleFunc("/api/ai/status", s.handleAIStatus)
 	s.mux.HandleFunc("/api/phone/", s.handlePhoneAPI)
 	s.registerHLSProxy()
 }
@@ -301,7 +303,11 @@ func rawHTTPRequest(method, urlStr string) (*http.Response, error) {
 	}
 	host := u.Host
 	if u.Port() == "" {
-		if u.Scheme == "https" { host += ":443" } else { host += ":80" }
+		if u.Scheme == "https" {
+			host += ":443"
+		} else {
+			host += ":80"
+		}
 	}
 	conn, err := net.DialTimeout("tcp", host, 5*time.Second)
 	if err != nil {
@@ -338,10 +344,10 @@ func rawHTTPRequest(method, urlStr string) (*http.Response, error) {
 		body = parts[1]
 	}
 	return &http.Response{
-		Status:     statusLine,
-		StatusCode: statusCode,
-		Header:     make(http.Header),
-		Body:       io.NopCloser(bytes.NewReader(body)),
+		Status:        statusLine,
+		StatusCode:    statusCode,
+		Header:        make(http.Header),
+		Body:          io.NopCloser(bytes.NewReader(body)),
 		ContentLength: int64(len(body)),
 	}, nil
 }
@@ -1390,38 +1396,59 @@ func (s *Server) startMotionDetector() {
 					snapCmd := exec.Command("ffmpeg", snapArgs...)
 					snapCmd.Run()
 
+					// [AI 缝A] sidecar 判帧: shadow 只记录判定结果; enforce 可降级无目标事件(仍入库留审计)
+					verdict := s.aiJudge(snapFP, cfg.DeviceID)
+					suppressed := verdict != nil && !verdict.HasTarget && s.ai.Mode == "enforce"
+
 					event := &MotionEvent{
 						DeviceID:     cfg.DeviceID,
 						DetectedAt:   time.Now().Format(time.RFC3339),
 						SnapshotPath: snapFP,
 					}
-					s.store.AddMotionEvent(event)
-					log.Printf("[motion] detected on %s, snapshot=%s", cfg.DeviceID[:8], snapFP)
-
-					// Broadcast motion event via SSE
-					s.broadcastSSE("motion", map[string]interface{}{
-						"device_id": cfg.DeviceID,
-						"device_name": device.Name,
-						"detected_at": event.DetectedAt,
-					})
-
-					// Face detection on snapshot (async)
-					go s.processFacesForMotion(snapFP, event.ID, cfg.DeviceID)
-
-					// Send snapshot to VPS for AI analysis
-					if s.vpsPluginURL != "" && s.vpsAPIKey != "" {
-						go s.sendForAIAnalysis(cfg.DeviceID, device.Name, snapFP)
-					}
-
-					// *** START RECORDING on motion ***
-					if _, already := activeMotionRecs[cfg.DeviceID]; !already {
-						rec, err := s.ffmpeg.StartMotionRecording(cfg.DeviceID)
-						if err != nil {
-							log.Printf("[motion] failed to start recording for %s: %v", cfg.DeviceID[:8], err)
-						} else {
-							activeMotionRecs[cfg.DeviceID] = rec
-							log.Printf("[motion] recording started for %s → %s", cfg.DeviceID[:8], rec.filePath)
+					if verdict != nil {
+						event.AIClass = verdict.TopCls
+						event.AIConf = verdict.TopConf
+						event.VerdictMode = s.ai.Mode
+						if event.AIClass == "" {
+							event.AIClass = "background"
 						}
+					}
+					s.store.AddMotionEvent(event)
+					aiLabel := "abstain"
+					if verdict != nil {
+						aiLabel = event.AIClass + "/" + event.VerdictMode
+					}
+					log.Printf("[motion] detected on %s, snapshot=%s ai=%s", cfg.DeviceID[:8], snapFP, aiLabel)
+
+					if !suppressed {
+						// Broadcast motion event via SSE
+						s.broadcastSSE("motion", map[string]interface{}{
+							"device_id":   cfg.DeviceID,
+							"device_name": device.Name,
+							"detected_at": event.DetectedAt,
+							"ai_class":    event.AIClass,
+						})
+
+						// Face detection on snapshot (async)
+						go s.processFacesForMotion(snapFP, event.ID, cfg.DeviceID)
+
+						// Send snapshot to VPS for AI analysis
+						if s.vpsPluginURL != "" && s.vpsAPIKey != "" {
+							go s.sendForAIAnalysis(cfg.DeviceID, device.Name, snapFP)
+						}
+
+						// *** START RECORDING on motion ***
+						if _, already := activeMotionRecs[cfg.DeviceID]; !already {
+							rec, err := s.ffmpeg.StartMotionRecording(cfg.DeviceID)
+							if err != nil {
+								log.Printf("[motion] failed to start recording for %s: %v", cfg.DeviceID[:8], err)
+							} else {
+								activeMotionRecs[cfg.DeviceID] = rec
+								log.Printf("[motion] recording started for %s → %s", cfg.DeviceID[:8], rec.filePath)
+							}
+						}
+					} else {
+						log.Printf("[ai] enforce: background-only motion suppressed on %s (event %s kept for audit)", cfg.DeviceID[:8], event.ID)
 					}
 				}
 			}
@@ -1704,7 +1731,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 		HttpOnly: true,
 	})
-		s.json(w, map[string]string{"status": "logged_out"})
+	s.json(w, map[string]string{"status": "logged_out"})
 }
 
 // ============ License Handlers ============
@@ -1790,9 +1817,9 @@ func (s *Server) handleFaces(w http.ResponseWriter, r *http.Request) {
 		s.json(w, faces)
 	case "POST":
 		var req struct {
-			Label    string `json:"label"`
-			FaceHash string `json:"face_hash,omitempty"`
-			DeviceID string `json:"device_id,omitempty"`
+			Label     string `json:"label"`
+			FaceHash  string `json:"face_hash,omitempty"`
+			DeviceID  string `json:"device_id,omitempty"`
 			ThumbPath string `json:"thumb_path,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -2109,6 +2136,21 @@ func (s *Server) processFacesForMotion(snapshotPath, motionEventID, deviceID str
 		})
 
 		matchedFace, confidence := MatchFace(faceHash, knownFaces, 15)
+
+		// [AI 缝B] 嵌入向量匹配优先(有向量且本次提取成功时); aHash 为冷启动/降级路径
+		var emb []float32
+		if s.aiEnabled() {
+			emb = s.aiEmbedFace(thumbPath)
+		}
+		if emb != nil {
+			if m, score, hasVectors := MatchFaceEmbedding(emb, knownFaces); hasVectors {
+				matchedFace, confidence = nil, 0
+				if m != nil {
+					matchedFace, confidence = m, score
+				}
+			}
+		}
+
 		label := "unknown"
 		faceID := ""
 		if matchedFace != nil {
@@ -2126,10 +2168,18 @@ func (s *Server) processFacesForMotion(snapshotPath, motionEventID, deviceID str
 					DeviceID:  deviceID,
 					ThumbPath: thumbPath,
 				}
+				if emb != nil {
+					newFace.Embedding = aiFloat32ToBlob(emb)
+					newFace.EmbModel = aiEmbedModel
+				}
 				s.store.AddFace(newFace)
 				faceID = newFace.ID
 				knownFaces = append(knownFaces, newFace)
 			} else {
+				if emb != nil && len(existing.Embedding) == 0 {
+					// 老记录补提向量(一次性迁移效应)
+					s.store.UpdateFaceEmbedding(existing.ID, aiFloat32ToBlob(emb), aiEmbedModel)
+				}
 				faceID = existing.ID
 				label = existing.Label
 				s.store.UpdateFaceSeen(existing.ID)
@@ -2157,9 +2207,9 @@ func (s *Server) processFacesForMotion(snapshotPath, motionEventID, deviceID str
 // Checks several common paths.
 func findCascadeFile(dataDir string) string {
 	candidates := []string{
-		"backend/facefinder",                          // run from project root
+		"backend/facefinder", // run from project root
 		filepath.Join(dataDir, "..", "backend", "facefinder"), // DATA_DIR=./data
-		filepath.Join(dataDir, "facefinder"),           // copy in data dir
+		filepath.Join(dataDir, "facefinder"),                  // copy in data dir
 	}
 	for _, p := range candidates {
 		if _, err := os.Stat(p); err == nil {
@@ -2188,6 +2238,7 @@ func NewServer(store *Store, dataDir string) *Server {
 		faceDir:      filepath.Join(dataDir, "faces"),
 		sseClients:   make(map[chan string]bool),
 		hlsClient:    &http.Client{Jar: jar},
+		ai:           newAIConfig(),
 	}
 	s.registerRoutes()
 

@@ -19,15 +19,15 @@ import (
 // ============ Data Models ============
 
 type Device struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Protocol  string `json:"protocol"`
-	URL       string `json:"url"`
-	Username  string `json:"username"`
-	Password  string `json:"password"`
-	Status    string `json:"status"`
-	GroupName string `json:"group_name"`
-	CreatedAt string `json:"created_at"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Protocol   string `json:"protocol"`
+	URL        string `json:"url"`
+	Username   string `json:"username"`
+	Password   string `json:"password"`
+	Status     string `json:"status"`
+	GroupName  string `json:"group_name"`
+	CreatedAt  string `json:"created_at"`
 	Capability string `json:"capability,omitempty"` // JSON blob from phone self-check
 }
 
@@ -74,11 +74,14 @@ type MotionConfig struct {
 }
 
 type MotionEvent struct {
-	ID          string `json:"id"`
-	DeviceID    string `json:"device_id"`
-	DetectedAt  string `json:"detected_at"`
-	SnapshotPath string `json:"snapshot_path"`
-	CreatedAt   string `json:"created_at"`
+	ID           string  `json:"id"`
+	DeviceID     string  `json:"device_id"`
+	DetectedAt   string  `json:"detected_at"`
+	SnapshotPath string  `json:"snapshot_path"`
+	CreatedAt    string  `json:"created_at"`
+	AIClass      string  `json:"ai_class,omitempty"`     // 缝A: sidecar 判定类别(""=未判/弃权)
+	AIConf       float64 `json:"ai_conf,omitempty"`      // 缝A: 置信度
+	VerdictMode  string  `json:"verdict_mode,omitempty"` // 缝A: 判定时的开关(shadow/enforce)
 }
 
 // ============ SQLite Store ============
@@ -212,6 +215,18 @@ func (s *Store) migrate() {
 			log.Fatalf("[store] migrate failed: %v", err)
 		}
 	}
+	// 运行期加列(AI 缝A/B): 列已存在报 duplicate column, 忽略 — 与 devices.capability 先例同法
+	for _, alt := range []string{
+		"ALTER TABLE motion_events ADD COLUMN ai_class TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE motion_events ADD COLUMN ai_conf REAL NOT NULL DEFAULT 0",
+		"ALTER TABLE motion_events ADD COLUMN verdict_mode TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE faces ADD COLUMN embedding BLOB",
+		"ALTER TABLE faces ADD COLUMN emb_model TEXT NOT NULL DEFAULT ''",
+	} {
+		if _, err := s.db.Exec(alt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			log.Printf("[store] migrate alter failed: %v", err)
+		}
+	}
 	log.Println("[store] database migrated")
 }
 
@@ -278,8 +293,8 @@ func (s *Store) UpdateDeviceGroup(id, groupName string) {
 
 // ListGroups returns all distinct group names with device counts.
 type GroupInfo struct {
-	Name   string `json:"name"`
-	Count  int    `json:"count"`
+	Name  string `json:"name"`
+	Count int    `json:"count"`
 }
 
 func (s *Store) ListGroups() []*GroupInfo {
@@ -499,11 +514,11 @@ func (s *Store) ExportAll() string {
 	defer s.mu.RUnlock()
 
 	type exportData struct {
-		Devices    []*Device        `json:"devices"`
-		Recordings []*Recording     `json:"recordings"`
-		Schedules  []*Schedule      `json:"schedules"`
+		Devices    []*Device         `json:"devices"`
+		Recordings []*Recording      `json:"recordings"`
+		Schedules  []*Schedule       `json:"schedules"`
 		Snapshots  []*SnapshotConfig `json:"snapshots"`
-		ExportedAt string           `json:"exported_at"`
+		ExportedAt string            `json:"exported_at"`
 	}
 
 	data := exportData{
@@ -524,9 +539,9 @@ func (s *Store) ImportAll(jsonData string) error {
 	defer s.mu.Unlock()
 
 	var data struct {
-		Devices    []*Device        `json:"devices"`
-		Recordings []*Recording     `json:"recordings"`
-		Schedules  []*Schedule      `json:"schedules"`
+		Devices    []*Device         `json:"devices"`
+		Recordings []*Recording      `json:"recordings"`
+		Schedules  []*Schedule       `json:"schedules"`
 		Snapshots  []*SnapshotConfig `json:"snapshots"`
 	}
 	if err := json.Unmarshal([]byte(jsonData), &data); err != nil {
@@ -647,8 +662,8 @@ func (s *Store) AddMotionEvent(e *MotionEvent) {
 	defer s.mu.Unlock()
 	e.ID = uuid.NewString()[:8]
 	e.CreatedAt = time.Now().Format(time.RFC3339)
-	s.db.Exec("INSERT INTO motion_events (id, device_id, detected_at, snapshot_path, created_at) VALUES (?,?,?,?,?)",
-		e.ID, e.DeviceID, e.DetectedAt, e.SnapshotPath, e.CreatedAt)
+	s.db.Exec("INSERT INTO motion_events (id, device_id, detected_at, snapshot_path, created_at, ai_class, ai_conf, verdict_mode) VALUES (?,?,?,?,?,?,?,?)",
+		e.ID, e.DeviceID, e.DetectedAt, e.SnapshotPath, e.CreatedAt, e.AIClass, e.AIConf, e.VerdictMode)
 }
 
 func (s *Store) ListMotionEvents(deviceID string, limit int) []*MotionEvent {
@@ -657,7 +672,7 @@ func (s *Store) ListMotionEvents(deviceID string, limit int) []*MotionEvent {
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, _ := s.db.Query("SELECT id, device_id, detected_at, snapshot_path, created_at FROM motion_events WHERE device_id=? ORDER BY detected_at DESC LIMIT ?", deviceID, limit)
+	rows, _ := s.db.Query("SELECT id, device_id, detected_at, snapshot_path, created_at, ai_class, ai_conf, verdict_mode FROM motion_events WHERE device_id=? ORDER BY detected_at DESC LIMIT ?", deviceID, limit)
 	if rows == nil {
 		return nil
 	}
@@ -665,7 +680,7 @@ func (s *Store) ListMotionEvents(deviceID string, limit int) []*MotionEvent {
 	var result []*MotionEvent
 	for rows.Next() {
 		e := &MotionEvent{}
-		rows.Scan(&e.ID, &e.DeviceID, &e.DetectedAt, &e.SnapshotPath, &e.CreatedAt)
+		rows.Scan(&e.ID, &e.DeviceID, &e.DetectedAt, &e.SnapshotPath, &e.CreatedAt, &e.AIClass, &e.AIConf, &e.VerdictMode)
 		result = append(result, e)
 	}
 	return result
@@ -675,7 +690,7 @@ func (s *Store) ListMotionEvents(deviceID string, limit int) []*MotionEvent {
 func (s *Store) ListMotionEventsAll(since time.Time) []*MotionEvent {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	rows, _ := s.db.Query("SELECT id, device_id, detected_at, snapshot_path, created_at FROM motion_events WHERE created_at > ? ORDER BY detected_at DESC LIMIT 200", since.Format(time.RFC3339))
+	rows, _ := s.db.Query("SELECT id, device_id, detected_at, snapshot_path, created_at, ai_class, ai_conf, verdict_mode FROM motion_events WHERE created_at > ? ORDER BY detected_at DESC LIMIT 200", since.Format(time.RFC3339))
 	if rows == nil {
 		return nil
 	}
@@ -683,12 +698,11 @@ func (s *Store) ListMotionEventsAll(since time.Time) []*MotionEvent {
 	var result []*MotionEvent
 	for rows.Next() {
 		e := &MotionEvent{}
-		rows.Scan(&e.ID, &e.DeviceID, &e.DetectedAt, &e.SnapshotPath, &e.CreatedAt)
+		rows.Scan(&e.ID, &e.DeviceID, &e.DetectedAt, &e.SnapshotPath, &e.CreatedAt, &e.AIClass, &e.AIConf, &e.VerdictMode)
 		result = append(result, e)
 	}
 	return result
 }
-
 
 // ============ Licenses ============
 
@@ -772,7 +786,7 @@ func boolToInt(b bool) int {
 func (s *Store) ListFaces() []*KnownFace {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	rows, err := s.db.Query("SELECT id, label, face_hash, device_id, thumb_path, created_at, last_seen_at, seen_count FROM faces ORDER BY seen_count DESC, last_seen_at DESC")
+	rows, err := s.db.Query("SELECT id, label, face_hash, device_id, thumb_path, created_at, last_seen_at, seen_count, COALESCE(embedding, X''), emb_model FROM faces ORDER BY seen_count DESC, last_seen_at DESC")
 	if err != nil {
 		return nil
 	}
@@ -780,7 +794,7 @@ func (s *Store) ListFaces() []*KnownFace {
 	var result []*KnownFace
 	for rows.Next() {
 		f := &KnownFace{}
-		rows.Scan(&f.ID, &f.Label, &f.FaceHash, &f.DeviceID, &f.ThumbPath, &f.CreatedAt, &f.LastSeenAt, &f.SeenCount)
+		rows.Scan(&f.ID, &f.Label, &f.FaceHash, &f.DeviceID, &f.ThumbPath, &f.CreatedAt, &f.LastSeenAt, &f.SeenCount, &f.Embedding, &f.EmbModel)
 		result = append(result, f)
 	}
 	return result
@@ -790,8 +804,8 @@ func (s *Store) GetFace(id string) *KnownFace {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	f := &KnownFace{}
-	err := s.db.QueryRow("SELECT id, label, face_hash, device_id, thumb_path, created_at, last_seen_at, seen_count FROM faces WHERE id=?", id).
-		Scan(&f.ID, &f.Label, &f.FaceHash, &f.DeviceID, &f.ThumbPath, &f.CreatedAt, &f.LastSeenAt, &f.SeenCount)
+	err := s.db.QueryRow("SELECT id, label, face_hash, device_id, thumb_path, created_at, last_seen_at, seen_count, COALESCE(embedding, X''), emb_model FROM faces WHERE id=?", id).
+		Scan(&f.ID, &f.Label, &f.FaceHash, &f.DeviceID, &f.ThumbPath, &f.CreatedAt, &f.LastSeenAt, &f.SeenCount, &f.Embedding, &f.EmbModel)
 	if err != nil {
 		return nil
 	}
@@ -803,8 +817,8 @@ func (s *Store) FindFaceByHash(hash string) *KnownFace {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	f := &KnownFace{}
-	err := s.db.QueryRow("SELECT id, label, face_hash, device_id, thumb_path, created_at, last_seen_at, seen_count FROM faces WHERE face_hash=?", hash).
-		Scan(&f.ID, &f.Label, &f.FaceHash, &f.DeviceID, &f.ThumbPath, &f.CreatedAt, &f.LastSeenAt, &f.SeenCount)
+	err := s.db.QueryRow("SELECT id, label, face_hash, device_id, thumb_path, created_at, last_seen_at, seen_count, COALESCE(embedding, X''), emb_model FROM faces WHERE face_hash=?", hash).
+		Scan(&f.ID, &f.Label, &f.FaceHash, &f.DeviceID, &f.ThumbPath, &f.CreatedAt, &f.LastSeenAt, &f.SeenCount, &f.Embedding, &f.EmbModel)
 	if err != nil {
 		return nil
 	}
@@ -820,8 +834,15 @@ func (s *Store) AddFace(f *KnownFace) {
 	f.CreatedAt = now
 	f.LastSeenAt = now
 	f.SeenCount = 1
-	s.db.Exec("INSERT INTO faces (id, label, face_hash, device_id, thumb_path, created_at, last_seen_at, seen_count) VALUES (?,?,?,?,?,?,?,?)",
-		f.ID, f.Label, f.FaceHash, f.DeviceID, f.ThumbPath, f.CreatedAt, f.LastSeenAt, f.SeenCount)
+	s.db.Exec("INSERT INTO faces (id, label, face_hash, device_id, thumb_path, created_at, last_seen_at, seen_count, embedding, emb_model) VALUES (?,?,?,?,?,?,?,?,?,?)",
+		f.ID, f.Label, f.FaceHash, f.DeviceID, f.ThumbPath, f.CreatedAt, f.LastSeenAt, f.SeenCount, f.Embedding, f.EmbModel)
+}
+
+// UpdateFaceEmbedding 为已知人脸补提/更新 512d 向量(缝B)。
+func (s *Store) UpdateFaceEmbedding(id string, emb []byte, model string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.db.Exec("UPDATE faces SET embedding=?, emb_model=? WHERE id=?", emb, model, id)
 }
 
 // UpdateFaceSeen updates last_seen_at and seen_count for a known face.
