@@ -32,8 +32,8 @@ services:
       - mediamtx
     environment:
       - DATA_DIR=/app/data
-      # AI sidecar(缝A/B): 未配 AI_SIDECAR_URL 时全部行为 = v0.8.4
-      - AI_SIDECAR_URL=${AI_SIDECAR_URL:-http://127.0.0.1:8901}
+      # AI sidecar(缝A/B): 默认空=全部 AI 缝关闭, 行为 = v0.8.4; 启用见 .env.example
+      - AI_SIDECAR_URL=${AI_SIDECAR_URL:-}
       - AI_MODE=${AI_MODE:-shadow}
       - AI_INTERNAL_TOKEN=${AI_INTERNAL_TOKEN:-}
       - AI_TIMEOUT_MS=${AI_TIMEOUT_MS:-800}
@@ -87,10 +87,14 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
       - "127.0.0.1:3001:3001"
-      - "5005:5005/udp"
+      # FIX-07: 本机调试在 .env 设 RUVIEW_UDP_BIND_HOST=127.0.0.1;
+      #         LAN 内 ESP32 场景保持 0.0.0.0 时, 宿主机防火墙对 5005/udp 限源(采集端 IP/MAC 白名单)
+      - "${RUVIEW_UDP_BIND_HOST:-0.0.0.0}:5005:5005/udp"
     environment:
       - RUVIEW_BIND_ADDR=0.0.0.0
-      - RUVIEW_ALLOW_UNAUTHENTICATED=1
+      # FIX-06: 生产收紧时设 0 并配 RUVIEW_API_TOKEN(上游镜像变量名以其版本文档为准,收紧后需回归 ruview Tab)
+      - RUVIEW_ALLOW_UNAUTHENTICATED=${RUVIEW_ALLOW_UNAUTHENTICATED:-1}
+      - RUVIEW_API_TOKEN=${RUVIEW_API_TOKEN:-}
       # 只服务真实 ESP32 CSI 帧，禁用 simulated 演示数据
       - CSI_SOURCE=esp32
       # UDP 绑 0.0.0.0（默认 loopback 会拒收 docker-proxy 转发的包 → ICMP unreachable）

@@ -14,7 +14,7 @@
 
   "config": {
     "gateway_host": "http://localhost:8899",
-    "gateway_password": "admin",
+    "gateway_password": "",
     "refresh_interval": 5,
     "analyze_api_key": "",
     "llm_base_url": "",

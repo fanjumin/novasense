@@ -52,11 +52,32 @@ type Server struct {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	// 安全响应头(FIX-17)。前端存在大量 inline script/style, 全面 CSP 化需先重构页面(遗留项),
+	// 此处先收紧可零风险防御的维度。
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
+	w.Header().Set("Referrer-Policy", "same-origin")
+
+	// CORS(FIX-05): 默认不发跨域头 = 仅同源可用; 跨域嵌入场景用 CORS_ALLOW_ORIGINS 白名单。
+	if origin := r.Header.Get("Origin"); origin != "" && corsAllowedOrigin(origin) {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Vary", "Origin")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+	}
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(204)
+		return
+	}
+
+	// 强制改密模式(FIX-03): 出厂口令未更换前, 仅放行 setup 状态/改密与登录。
+	if requireSetup() && !isSetupBypass(r.URL.Path) {
+		w.Header().Set("X-Setup-Required", "1")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"error": "setup_required", "hint": "POST /api/setup/password {new_password} 完成首次改密"})
 		return
 	}
 
@@ -77,6 +98,29 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mux.ServeHTTP(w, r)
+}
+
+// corsAllowedOrigin 匹配 env CORS_ALLOW_ORIGINS(逗号分隔精确 origin)。
+func corsAllowedOrigin(origin string) bool {
+	list := os.Getenv("CORS_ALLOW_ORIGINS")
+	if list == "" {
+		return false
+	}
+	for _, o := range strings.Split(list, ",") {
+		if strings.TrimSpace(o) == origin {
+			return true
+		}
+	}
+	return false
+}
+
+// isSetupBypass 强制改密模式下的放行清单(/api/setup/password 端点内部再校验模式)。
+func isSetupBypass(path string) bool {
+	switch path {
+	case "/api/setup/status", "/api/setup/password", "/api/login", "/ui/login.html":
+		return true
+	}
+	return false
 }
 
 func (s *Server) json(w http.ResponseWriter, data interface{}) {
@@ -143,6 +187,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/snapshots", s.handleSnapshots)
 	s.mux.HandleFunc("/api/snapshots/", s.handleSnapshotByID)
 	s.mux.HandleFunc("/api/snapshots/list/", s.handleSnapshotList)
+	s.mux.HandleFunc("/api/snapshots/once/", s.handleSnapshotOnce)
 	s.mux.HandleFunc("/api/health", s.handleHealth)
 	s.mux.HandleFunc("/api/metrics", s.handleMetrics)
 	s.mux.HandleFunc("/api/export", s.handleExport)
@@ -162,6 +207,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/discover/import", s.handleDiscoverImport)
 	s.mux.HandleFunc("/api/login", s.handleLogin)
 	s.mux.HandleFunc("/api/logout", s.handleLogout)
+	s.mux.HandleFunc("/api/setup/status", s.handleSetupStatus)
+	s.mux.HandleFunc("/api/setup/password", s.handleSetupPassword)
 	s.mux.HandleFunc("/api/license/generate", s.handleLicenseGenerate)
 	s.mux.HandleFunc("/api/license/check", s.handleLicenseCheck)
 	s.mux.HandleFunc("/api/license/bind", s.handleLicenseBind)
@@ -424,11 +471,11 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprint(w, `<!DOCTYPE html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><title>视频流管理平台</title>
+<head><meta charset="utf-8"><title>NovaSense Gateway</title>
 <style>body{font-family:sans-serif;margin:40px;line-height:1.6}</style>
 </head>
 <body>
-<h1>视频流管理平台</h1>
+<h1>NovaSense Gateway</h1>
 <p>状态: <span style="color:green">运行中</span></p>
 <a href="/ui/index.html">进入管理界面</a>
 </body></html>`)
@@ -581,6 +628,10 @@ func (s *Server) handleProxyStart(w http.ResponseWriter, r *http.Request) {
 		cfg.VideoFilter = vf
 	}
 
+	if s.store.GetDevice(deviceID) == nil {
+		s.error(w, "device not found", 404)
+		return
+	}
 	if err := s.ffmpeg.StartLiveProxyWithConfig(deviceID, cfg); err != nil {
 		s.error(w, err.Error(), 500)
 		return
@@ -731,15 +782,11 @@ func (s *Server) handleScheduleByID(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	devices, _, recordings := s.store.Stats()
-	onlineCount := 0
-	devList := s.store.ListDevices()
-	for range devList {
-		onlineCount++
-	}
+	onlineCount := s.devicesOnline(s.store.ListDevices())
 
 	s.json(w, map[string]interface{}{
 		"status":           "running",
-		"version":          "0.8.4",
+		"version":          Version,
 		"devices":          devices,
 		"online_devices":   onlineCount,
 		"recordings":       recordings,
@@ -750,17 +797,11 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	devices, _, recordings := s.store.Stats()
-	onlineCount := 0
-	devList := s.store.ListDevices()
-	for _, d := range devList {
-		if checkDeviceOnline(d.URL) == "online" {
-			onlineCount++
-		}
-	}
+	onlineCount := s.devicesOnline(s.store.ListDevices())
 
 	s.json(w, map[string]interface{}{
 		"status":           "ok",
-		"version":          "0.8.4",
+		"version":          Version,
 		"uptime":           time.Since(startTime).String(),
 		"devices_total":    devices,
 		"devices_online":   onlineCount,
@@ -784,6 +825,84 @@ func checkFFmpeg() bool {
 }
 
 var startTime = time.Now()
+
+// Version 单一版本源；构建可注入 -ldflags "-X main.Version=x.y.z"（FIX-18）。
+var Version = "0.8.4"
+
+// ---- FIX-09: 在线状态并发探测 + 短 TTL 缓存 ----
+//
+// 背景: /api/health 免鉴权却对每设备串行 DialTimeout(3s),5 台离线即 ~9s,构成放大面。
+// 现方案: 15s 缓存 + 8 路并发探测 + 单请求总预算 3.5s;超预算的设备读旧缓存值。
+
+type onlineEntry struct {
+	on bool
+	at time.Time
+}
+
+var onlineCache = struct {
+	mu sync.Mutex
+	m  map[string]onlineEntry
+}{m: make(map[string]onlineEntry)}
+
+const onlineTTL = 15 * time.Second
+
+func (s *Server) devicesOnline(devList []*Device) int {
+	now := time.Now()
+	fresh := make(map[string]bool, len(devList))
+	var stale []*Device
+	onlineCache.mu.Lock()
+	for _, d := range devList {
+		if e, ok := onlineCache.m[d.ID]; ok && now.Sub(e.at) < onlineTTL {
+			fresh[d.ID] = e.on
+			continue
+		}
+		stale = append(stale, d)
+	}
+	onlineCache.mu.Unlock()
+
+	if len(stale) > 0 {
+		var wg sync.WaitGroup
+		sem := make(chan struct{}, 8)
+		for _, d := range stale {
+			wg.Add(1)
+			go func(d *Device) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				on := checkDeviceOnline(d.URL) == "online"
+				onlineCache.mu.Lock()
+				onlineCache.m[d.ID] = onlineEntry{on: on, at: time.Now()}
+				onlineCache.mu.Unlock()
+				fresh[d.ID] = on
+			}(d)
+		}
+		done := make(chan struct{})
+		go func() { wg.Wait(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(3500 * time.Millisecond):
+			// 超预算: 未完成设备回退旧值(可能缺失则按离线计), 保证 P95 有界
+			onlineCache.mu.Lock()
+			for _, d := range stale {
+				if _, has := fresh[d.ID]; !has {
+					if e, ok := onlineCache.m[d.ID]; ok {
+						fresh[d.ID] = e.on
+					} else {
+						fresh[d.ID] = false
+					}
+				}
+			}
+			onlineCache.mu.Unlock()
+		}
+	}
+	count := 0
+	for _, ok := range fresh {
+		if ok {
+			count++
+		}
+	}
+	return count
+}
 
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
@@ -1691,11 +1810,23 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.error(w, "invalid JSON", 400)
 		return
 	}
-	if req.Password != adminPassword {
+	ip := clientIP(r)
+	if blocked, retryIn := loginBlocked(ip); blocked {
+		w.Header().Set("Retry-After", fmt.Sprintf("%d", retryIn))
+		s.error(w, fmt.Sprintf("too many failed attempts, retry in %ds", retryIn), 429)
+		return
+	}
+	if !checkPassword(req.Password) {
+		loginFailed(ip)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{"error": "wrong password"})
 		return
+	}
+	loginOK(ip)
+	if requireSetup() {
+		s.json(w, map[string]string{"status": "ok", "setup_required": "1"})
+		return // 出厂口令会话不外发, 必须先改密
 	}
 	sid := generateSessionID()
 	sessions.mu.Lock()
@@ -1711,6 +1842,43 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 	s.json(w, map[string]string{"status": "ok"})
+}
+
+// handleSetupStatus — 首配状态(免鉴权)。
+func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
+	s.json(w, map[string]bool{"setup_required": requireSetup()})
+}
+
+// handleSetupPassword — 首次改密。仅 setup 模式可用; 成功后旧会话全清、模式解除。
+func (s *Server) handleSetupPassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		s.error(w, "method not allowed", 405)
+		return
+	}
+	if !requireSetup() {
+		s.error(w, "setup mode inactive (已设过口令的修改请走登录后会话内操作; 本端点仅用于首配)", 403)
+		return
+	}
+	ip := clientIP(r)
+	if blocked, retryIn := loginBlocked(ip); blocked {
+		w.Header().Set("Retry-After", fmt.Sprintf("%d", retryIn))
+		s.error(w, fmt.Sprintf("too many attempts, retry in %ds", retryIn), 429)
+		return
+	}
+	var req struct {
+		NewPassword string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, "invalid JSON", 400)
+		return
+	}
+	if msg := setPassword(req.NewPassword); msg != "" {
+		loginFailed(ip)
+		s.error(w, msg, 400)
+		return
+	}
+	loginOK(ip)
+	s.json(w, map[string]string{"status": "ok", "message": "口令已设置, 请用新口令登录"})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -2223,7 +2391,7 @@ func findCascadeFile(dataDir string) string {
 
 // Update NewServer to start motion detector
 func NewServer(store *Store, dataDir string) *Server {
-	initAuth()
+	initAuth(dataDir)
 	jar, _ := cookiejar.New(nil)
 	s := &Server{
 		store:        store,
@@ -2237,7 +2405,7 @@ func NewServer(store *Store, dataDir string) *Server {
 		faceDetector: NewFaceDetector(findCascadeFile(dataDir)),
 		faceDir:      filepath.Join(dataDir, "faces"),
 		sseClients:   make(map[chan string]bool),
-		hlsClient:    &http.Client{Jar: jar},
+		hlsClient:    &http.Client{Jar: jar, Timeout: 10 * time.Second},
 		ai:           newAIConfig(),
 	}
 	s.registerRoutes()
@@ -2304,7 +2472,7 @@ func (s *Server) doHeartbeat() {
 	url := strings.TrimRight(s.vpsPluginURL, "/") + "/api/client/subscription/check"
 	body := map[string]string{
 		"device_id": getHostname(),
-		"version":   "0.8.4",
+		"version":   Version,
 	}
 	payload, _ := json.Marshal(body)
 	req, err := http.NewRequest("POST", url, bytes.NewReader(payload))
@@ -2424,7 +2592,7 @@ func main() {
 	server := NewServer(store, dataDir)
 
 	addr := ":8899"
-	log.Printf("=== 视频流管理平台 v0.8.4 ===")
+	log.Printf("=== NovaSense Gateway v%s ===", Version)
 	log.Printf("API 服务: http://0.0.0.0%s", addr)
 	log.Printf("打开浏览器访问 http://localhost%s", addr)
 	if err := http.ListenAndServe(addr, server); err != nil {

@@ -7,7 +7,7 @@
 # =============================================
 
 # Stage 1: Build Go binary (glibc + cgo)
-FROM golang:1.25-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
 
@@ -18,7 +18,7 @@ COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
 COPY backend/ .
-RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o video-stream-manager . \
+RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o novasense-gateway . \
  && CGO_ENABLED=0 go build -ldflags="-s -w" -o wapa-pull ./cmd/wapa-pull
 
 # Stage 2: Runtime (glibc, ships XM SDK)
@@ -27,7 +27,7 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certificates tzdata libstdc++6 && rm -rf /var/lib/apt/lists/*
 
 # Backend binary
-COPY --from=builder /build/video-stream-manager /usr/local/bin/
+COPY --from=builder /build/novasense-gateway /usr/local/bin/
 
 # XM (雄迈 XiongMai) SDK runtime
 COPY --from=builder /build/sdk/lib/libxmnetsdk.so /usr/local/lib/
@@ -44,9 +44,14 @@ COPY mediamtx/mediamtx.yml /app/mediamtx/mediamtx.yml
 
 RUN mkdir -p /app/data
 
+# GAP-A: pigo 人脸级联必须进运行镜像 — 放 /app/backend/ 因 /app/data 会被卷挂载遮蔽
+# (findCascadeFile 候选1 "backend/facefinder" 相对 WORKDIR=/app 命中此路径)
+RUN mkdir -p /app/backend
+COPY --from=builder /build/facefinder /app/backend/facefinder
+
 ENV DATA_DIR=/app/data
 
 EXPOSE 8899
 
 WORKDIR /app
-CMD ["video-stream-manager"]
+CMD ["novasense-gateway"]

@@ -40,7 +40,7 @@ def init_tables():
             CREATE TABLE IF NOT EXISTS novasense_gateways (
                 user_id           INTEGER PRIMARY KEY,
                 gateway_host      TEXT NOT NULL DEFAULT 'http://localhost:18899',
-                gateway_password  TEXT DEFAULT 'admin',
+                gateway_password  TEXT DEFAULT '',
                 snapshots_dir     TEXT DEFAULT '',
                 hls_base          TEXT DEFAULT 'http://localhost:8888',
                 created_at        TEXT DEFAULT (datetime('now')),
@@ -92,7 +92,7 @@ def get_tenant(user_id: int) -> dict:
         default = {
             'user_id': user_id,
             'gateway_host': 'http://localhost:18899',
-            'gateway_password': 'admin',
+            'gateway_password': '',
             'snapshots_dir': f'/home/easykai/easykai-workspace/easykai.cn/plugins/novasense/snapshots/{user_id}',
             'hls_base': 'http://localhost:8888',
         }
@@ -232,7 +232,7 @@ def get_gw() -> GatewayClient:
     tenant = get_tenant(user_id) if user_id else {}
     return GatewayClient(
         tenant.get('gateway_host', 'http://localhost:18899'),
-        tenant.get('gateway_password', 'admin')
+        tenant.get('gateway_password', '')
     )
 
 
@@ -372,8 +372,8 @@ def api_snapshot_take(device_id: str):
     gw = get_gw()
     tenant = get_tenant(user_id)
 
-    # 调 Gateway 抓拍（假设有 /api/snapshot/{id} 接口）
-    result = gw.get(f'/api/snapshot/{device_id}')
+    # 调网关单帧抓拍端点(FIX-11 新增; 旧调用的 GET /api/snapshot/{id} 从未存在, 契约断裂已闭环)
+    result = gw.post(f'/api/snapshots/once/{device_id}')
     if 'error' in result:
         return jsonify({'success': False, 'error': result['error']})
 

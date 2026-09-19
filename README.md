@@ -193,7 +193,7 @@ EasyKai（易开）平台感知网络插件。提供设备管理、RTMP 推流�
 # 1. 启动 Gateway（核心枢纽）
 cd gateway
 docker compose up -d
-# 浏览器打开 http://localhost:8899 （默认密码 admin）
+# 浏览器打开 http://localhost:8899 （首启为强制改密模式：出厂口令 admin 登录后即要求设置新管理口令）
 
 # 2. 安装 Agent（手机感知节点）
 # 在 Android 手机上安装 agent/app/build/outputs/apk/ 中的 APK

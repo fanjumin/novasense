@@ -162,7 +162,7 @@
 
 ### 🔐 授权管理
 
-- ✅ 登录认证（默认密码 admin）
+- ✅ 登录认证（bcrypt 持久哈希；出厂口令下首启进入强制改密模式）
 - ✅ 授权码生成/校验/绑定
 - ✅ 免费版 / Pro 版区分
 
@@ -179,7 +179,7 @@
 
 #### 前提
 
-- Go 1.25+
+- Go 1.26+（与 go.mod/Dockerfile golang:1.26 三处一致）
 - FFmpeg 7.0+（需支持 libx264、aac）
 - MediaMTX（Docker 或直接安装）
 
@@ -191,15 +191,15 @@ docker compose up -d mediamtx
 
 # 2. 编译后端
 cd backend
-go build -o ../video-stream-manager .
+go build -o ../novasense-gateway .
 
 # 3. 启动后端
 cd ..
-DATA_DIR=./data ./video-stream-manager
+DATA_DIR=./data ./novasense-gateway
 
 # 4. 打开浏览器
 # http://localhost:8899
-# 默认密码: admin
+# 首次登录会强制设置新口令（或预设 ADMIN_PASSWORD 跳过首配）
 ```
 
 ### Docker 部署
@@ -223,7 +223,7 @@ docker compose logs -f
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `ADMIN_PASSWORD` | `admin` | Web 管理密码 |
+| `ADMIN_PASSWORD` | 空=出厂 admin+强制改密 | Web 管理密码（bcrypt 落盘 data/auth.json） |
 | `DATA_DIR` | `/app/data` | 数据目录（数据库、录像、抓拍） |
 | `VPS_PLUGIN_URL` | - | easykai.cn 插件地址（远程功能） |
 | `VPS_API_KEY` | - | easykai.cn API Key |
@@ -456,10 +456,10 @@ video-stream-manager/
 ```bash
 # 开发构建
 cd backend
-go build -o ../video-stream-manager .
+go build -o ../novasense-gateway .
 
-# 带版本信息
-go build -ldflags="-s -w -X main.version=0.8.4" -o ../video-stream-manager .
+# 带版本信息(Version 为单一版本源, 构建时注入)
+go build -ldflags="-s -w -X main.Version=0.8.4" -o ../novasense-gateway .
 ```
 
 ### 添加新功能
