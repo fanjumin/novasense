@@ -242,19 +242,6 @@ a { color:#00c8ff; text-decoration:none; }
   </div>
 </div>
 
-<!-- SCHEDULE -->
-<div id="tab-schedule" class="content">
-  <div class="toolbar">
-    <button class="btn btn-primary" onclick="showAddSchedule()">+ 添加计划</button>
-    <button class="btn btn-outline" onclick="loadSchedules()">🔄 刷新</button>
-  </div>
-  <div class="card" style="padding:0">
-    <table><thead><tr><th>名称</th><th>设备</th><th>时段</th><th>天数</th><th>分段</th><th>状态</th><th>上次触发</th><th>操作</th></tr></thead>
-      <tbody id="scheduleTable"></tbody>
-    </table>
-  </div>
-</div>
-
 <!-- SNAPSHOTS -->
 <div id="tab-snapshots" class="content">
   <div class="toolbar">
@@ -601,40 +588,6 @@ a { color:#00c8ff; text-decoration:none; }
   </div>
 </div>
 
-<div id="modalSchedule" class="modal-overlay" style="display:none" onclick="closeIfBg(event,'modalSchedule')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <h3 id="scheduleModalTitle">添加定时计划</h3>
-    <div class="form-group"><label>名称</label><input id="fSchedName" placeholder="如: 白天录制"></div>
-    <div class="form-group"><label>设备</label><select id="fSchedDev"></select></div>
-    <div class="form-row">
-      <div class="form-group"><label>开始时间</label><input id="fSchedStart" type="time" value="08:00"></div>
-      <div class="form-group"><label>结束时间</label><input id="fSchedEnd" type="time" value="20:00"></div>
-    </div>
-    <div class="form-group"><label>天数</label>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;font-size:12px">
-        <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" class="day-cb" value="1"> 一</label>
-        <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" class="day-cb" value="2"> 二</label>
-        <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" class="day-cb" value="3"> 三</label>
-        <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" class="day-cb" value="4"> 四</label>
-        <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" class="day-cb" value="5"> 五</label>
-        <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" class="day-cb" value="6"> 六</label>
-        <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" class="day-cb" value="0"> 日</label>
-        <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" id="dayAll" checked> 每天</label>
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>分段时长(分钟)</label><input id="fSchedDur" type="number" value="30" min="1"></div>
-      <div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:8px">
-        <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="fSchedEnabled" checked> 启用</label>
-      </div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeById('modalSchedule')">取消</button>
-      <button class="btn btn-primary" onclick="submitSchedule()" id="schedSubmitBtn">添加</button>
-    </div>
-  </div>
-</div>
-
 <div id="modalSnap" class="modal-overlay" style="display:none" onclick="closeIfBg(event,'modalSnap')">
   <div class="modal" onclick="event.stopPropagation()">
     <h3>开启抓拍</h3>
@@ -744,15 +697,17 @@ document.addEventListener('DOMContentLoaded', function() {
 function switchTab(name) {
   document.querySelectorAll('.nav-item').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.content').forEach(c=>c.classList.remove('active'));
-  document.querySelector(`.nav-item[data-tab="${name}"]`).classList.add('active');
-  document.getElementById(`tab-${name}`).classList.add('active');
-  var titles={live:'实时画面',recordings:'录像回放',snapshots:'抓拍',director:'导播',motion:'运动检测',faces:'人脸',discover:'设备发现',status:'状态'};
+  var nav=document.querySelector(`.nav-item[data-tab="${name}"]`); if(nav) nav.classList.add('active');
+  var tab=document.getElementById(`tab-${name}`); if(tab) tab.classList.add('active');
+  var titles={live:'实时画面',recordings:'录像回放',snapshots:'抓拍',director:'导播',motion:'运动检测',faces:'人脸',discover:'设备发现',ruview:'WiFi 感知',status:'状态'};
   document.querySelector('.topbar-title').textContent=titles[name]||name;
   if (name==='live') renderLive();
-  if (name==='recordings') { loadRecordings(); }
-  if (name==='schedule') { loadSchedules(); }
-  if (name==='snapshots') { loadSnapshots(); }
-  if (name==='faces') { loadFaces(); }
+  if (name==='recordings') loadRecordings();
+  if (name==='snapshots') loadSnapshots();
+  if (name==='director') loadDirector();
+  if (name==='motion') loadMotion();
+  if (name==='faces') loadFaces();
+  if (name==='discover') loadDiscover();
   if (name==='status') loadStatus();
 }
 
@@ -1162,108 +1117,6 @@ async function submitRecord() {
   toast('录制完成');closeById('modalRecord');loadRecordings();
 }
 
-// ===== SCHEDULE =====
-let schedEditId = null;
-
-async function loadSchedules() {
-  const s=await api('/api/schedules');
-  const tb=document.getElementById('scheduleTable');
-  if (!s.length){tb.innerHTML='<tr><td colspan="8" class="empty">暂无定时计划</td></tr>';return;}
-  const dayNames={'0':'日','1':'一','2':'二','3':'三','4':'四','5':'五','6':'六'};
-  tb.innerHTML=s.map(x=>{
-    const days=x.days?x.days.split(',').map(d=>dayNames[d.trim()]||d).join(' '):'每天';
-    return `<tr>
-      <td>${esc(x.name)}</td>
-      <td style="font-size:11px;color:#6b8299">${esc(x.device_id)}</td>
-      <td>${esc(x.time_start)}-${esc(x.time_end)}</td>
-      <td style="font-size:11px">${days}</td>
-      <td>${x.duration_min}分</td>
-      <td><span class="badge badge-${x.enabled?'online':'offline'}">${x.enabled?'启用':'停用'}</span></td>
-      <td style="font-size:11px;color:#6b8299">${x.last_triggered?new Date(x.last_triggered).toLocaleString():'-'}</td>
-      <td>
-        <button class="btn btn-sm btn-outline" onclick="editSchedule('${x.id}')">编辑</button>
-        <button class="btn btn-sm btn-danger" onclick="delSchedule('${x.id}')">删</button>
-      </td>
-    </tr>`;
-  }).join('');
-}
-async function showAddSchedule() {
-  const d=await api('/api/devices');
-  document.getElementById('fSchedDev').innerHTML=d.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');
-  document.getElementById('fSchedName').value='';
-  document.getElementById('fSchedStart').value='08:00';
-  document.getElementById('fSchedEnd').value='20:00';
-  document.getElementById('fSchedDur').value='30';
-  document.getElementById('fSchedEnabled').checked=true;
-  document.getElementById('dayAll').checked=true;
-  document.querySelectorAll('.day-cb').forEach(c=>c.checked=false);
-  schedEditId=null;
-  document.getElementById('scheduleModalTitle').textContent='添加定时计划';
-  document.getElementById('schedSubmitBtn').textContent='添加';
-  document.getElementById('modalSchedule').style.display='flex';
-}
-document.addEventListener('change',function(e){
-  if(e.target.id==='dayAll'){
-    document.querySelectorAll('.day-cb').forEach(c=>c.checked=e.target.checked);
-  }else if(e.target.classList.contains('day-cb')){
-    document.getElementById('dayAll').checked=false;
-  }
-});
-async function submitSchedule() {
-  const days=[];
-  document.querySelectorAll('.day-cb:checked').forEach(c=>days.push(c.value));
-  const daysStr=document.getElementById('dayAll').checked?'':days.join(',');
-  const obj={
-    name:document.getElementById('fSchedName').value||'定时录制',
-    device_id:document.getElementById('fSchedDev').value,
-    time_start:document.getElementById('fSchedStart').value,
-    time_end:document.getElementById('fSchedEnd').value,
-    days:daysStr,
-    duration_min:+document.getElementById('fSchedDur').value||30,
-    enabled:document.getElementById('fSchedEnabled').checked
-  };
-  if (!obj.device_id){toast('选择设备','e');return;}
-  if (schedEditId){
-    obj.id=schedEditId;
-    await api('/api/schedules/'+schedEditId,{method:'PUT',body:obj});
-    toast('已更新');
-  }else{
-    await api('/api/schedules',{method:'POST',body:obj});
-    toast('已添加');
-  }
-  closeById('modalSchedule');loadSchedules();
-}
-async function editSchedule(id) {
-  const x=await api('/api/schedules/'+id);
-  if (!x||x.error){toast('加载失败','e');return;}
-  const d=await api('/api/devices');
-  document.getElementById('fSchedDev').innerHTML=d.map(v=>`<option value="${v.id}" ${v.id===x.device_id?'selected':''}>${esc(v.name)}</option>`).join('');
-  document.getElementById('fSchedName').value=x.name;
-  document.getElementById('fSchedStart').value=x.time_start;
-  document.getElementById('fSchedEnd').value=x.time_end;
-  document.getElementById('fSchedDur').value=x.duration_min;
-  document.getElementById('fSchedEnabled').checked=x.enabled;
-  document.querySelectorAll('.day-cb').forEach(c=>c.checked=false);
-  if (x.days){
-    x.days.split(',').forEach(d=>{
-      const cb=document.querySelector(`.day-cb[value="${d.trim()}"]`);
-      if(cb)cb.checked=true;
-    });
-    document.getElementById('dayAll').checked=false;
-  }else{
-    document.getElementById('dayAll').checked=true;
-  }
-  schedEditId=id;
-  document.getElementById('scheduleModalTitle').textContent='编辑定时计划';
-  document.getElementById('schedSubmitBtn').textContent='保存';
-  document.getElementById('modalSchedule').style.display='flex';
-}
-async function delSchedule(id) {
-  if(!confirm('删除此计划?'))return;
-  await api('/api/schedules/'+id,{method:'DELETE'});
-  toast('已删除');loadSchedules();
-}
-
 // ===== SNAPSHOTS =====
 async function loadSnapshots() {
   const sns=await api('/api/snapshots');
@@ -1386,7 +1239,7 @@ if ('Notification' in window && Notification.permission === 'default') {
   Notification.requestPermission();
 }
 
-renderLive(); loadRecordings(); loadSchedules(); loadSnapshots(); loadStatus();
+renderLive(); loadRecordings(); loadSnapshots(); loadStatus();
 
 // ===== AUDIO TOGGLE =====
 function toggleMute(id) {
@@ -1687,26 +1540,6 @@ async function changeRes(id, res) {
     toast(data.error || '切换失败','e');
   }
 }
-
-// Wrap switchTab to add director support
-const _origSwitch = switchTab;
-switchTab = function(name) {
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-  document.querySelectorAll('.content').forEach(c=>c.classList.remove('active'));
-  const tab = document.querySelector(`.tab[onclick*="${name}"]`);
-  if (tab) tab.classList.add('active');
-  const content = document.getElementById('tab-'+name);
-  if (content) content.classList.add('active');
-  if (name==='live') renderLive();
-  if (name==='recordings') loadRecordings();
-  if (name==='schedule') loadSchedules();
-  if (name==='snapshots') loadSnapshots();
-  if (name==='director') loadDirector();
-  if (name==='motion') loadMotion();
-  if (name==='faces') loadFaces();
-  if (name==='discover') loadDiscover();
-  if (name==='status') loadStatus();
-};
 
 // ===== DRAG & DROP (card reordering) =====
 var dragSrcId = null;

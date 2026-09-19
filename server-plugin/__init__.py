@@ -120,9 +120,7 @@ def update_tenant(user_id: int, **kwargs):
 bp = Blueprint(
     'novasense',
     __name__,
-    template_folder='templates',
-    static_folder='static',
-    static_url_path='/static/novasense'
+    template_folder='templates'
 )
 
 _plugin_instance = None
