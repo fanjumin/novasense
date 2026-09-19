@@ -1,15 +1,15 @@
 [Unit]
 Description=Video Stream Manager - Go 后端 API 服务
-Documentation=https://github.com/deployuser/video-stream-manager
+Documentation=https://github.com/fanjumin/novasense
 After=network-online.target mediamtx.service
 Wants=network-online.target
 BindsTo=mediamtx.service
 
 [Service]
 Type=simple
-User=deployuser
-WorkingDirectory=/home/deployuser/projects/video-stream-manager
-ExecStart=/home/deployuser/projects/video-stream-manager/bin/video-stream-manager
+User=novasense
+WorkingDirectory=/opt/novasense/gateway
+ExecStart=/opt/novasense/gateway/bin/video-stream-manager
 Restart=always
 RestartSec=3
 StartLimitIntervalSec=60

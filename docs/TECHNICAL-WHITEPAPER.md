@@ -309,7 +309,7 @@ HttpServer（417 行）路由集中于 `HttpServer.kt:94-126, 317-387`：`/`（�
 ### 6.2 plugin.json 与挂载
 
 - identifier `novasense`，version 0.1.0，作者 EasyKai，`min_app_version: 0.10.0`，category=system，tags=[监控,感知,IoT,摄像头]。
-- 内置 config：`gateway_host: http://203.0.113.17:8899`（Tailscale 内网 IP）、`gateway_password: admin`、`refresh_interval: 5`。
+- 内置 config：`gateway_host: http://localhost:8899`（曾指向维护者的 Tailscale 内网地址，公开前已脱敏）、`gateway_password: admin`、`refresh_interval: 5`。
 - **权限声明仅 `["network.request"]` 一项**——无 routes/scheduler/dag/health/events 申报，`hooks` 与 `agents` 均为空数组。
 - **挂载前缀 `/plugin/novasense/`**：前端 JS 硬编码 `const API = '/plugin/novasense/api'`（`index.html:237`），与规划一致（`NOVASENSE_PLAN.md:27`）。
 
@@ -391,7 +391,7 @@ scene 运动检测 → 抓拍 → pigo 检脸 → motion/face_events 入库
 **Gateway（三种）**：
 - **Docker Compose**（host 网络，三容器：mediamtx / nms-backend / 可选 ruview）；前端只读挂载热更新；Dockerfile 双阶段 glibc（CGO 链 XM SDK）+ ffmpeg + wapa-pull，`EXPOSE 8899`（`docker-compose.yml`、`Dockerfile:31`）。
 - **systemd**：`deploy/setup.sh [systemd|docker]`，两个 unit（`Restart=always`、`NoNewPrivileges`/`ProtectSystem`）。
-- **裸机**：`backend/run.sh`（写死个人路径 `/home/deployuser`，日志到 `/tmp`）。
+- **裸机**：`backend/run.sh`（2026-09-19 重写为相对路径可移植版；此前为写死个人开发机路径的版本）。
 - 环境变量：`DATA_DIR`、`ADMIN_PASSWORD`、`VPS_PLUGIN_URL`/`VPS_API_KEY`、`FRONTEND_DIR`。
 
 **Agent**：`./gradlew assembleDebug` 编译或安装现成 APK（`README.md:185-187`）。
@@ -447,7 +447,7 @@ README "NovaSense Cloud" 章节（`README.md:92-116`）声称 CRUD、RTMP 推流
 
 **Gateway**
 - 单体拆分半途：`.split_needs_work`、`main.go.bak`、healthCheck 仍在 `main.go:949-1041`。
-- 硬编码 LAN IP `192.0.2.107`（`main.go:576,731`、`index.html:976`、`phone.html:42`）；`run.sh` 残留 `/home/deployuser` 个人路径。
+- ~~硬编码 LAN IP~~（已于 2026-09-19 修复：Go 侧 `hls_url`/`mediamtx_hls_url` 改按请求 Host 派生，前端改用 `location.hostname`/`location.origin`，见 §13.4）；~~`run.sh` 个人路径~~ 已重写为可移植版。
 - 明文密码存库 + URL 内嵌凭证；会话仅内存 + 默认密码 admin + `/hls`、`/api/events` 免鉴权 + CORS `*`。
 - SSE 广播无背压；SQLite `SetMaxOpenConns(1)` 限并发；aHash 人脸表征弱（无特征向量，光照敏感）；`ImportAll` 清表式导入有丢数据风险。
 - 手动录制同步阻塞 HTTP。

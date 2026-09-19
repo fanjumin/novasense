@@ -8,8 +8,8 @@
 //
 // Usage:
 //
-//	wapa-pull  192.0.2.141  [port=9001]
-//	wapa-pull  192.0.2.141  9001 | ffmpeg -f m4v -i pipe:0 ...
+//	wapa-pull  192.0.2.10  [port=9001]
+//	wapa-pull  192.0.2.10  9001 | ffmpeg -f m4v -i pipe:0 ...
 package main
 
 import (

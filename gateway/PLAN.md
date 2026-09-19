@@ -16,7 +16,7 @@ easykai.cn (VPS 100.124.0.103, Flask :8081)
     │  └──────┬──────────┘
     │         │ HTTP 代理
     ▼         ▼
-本地 VSM (192.0.2.107:8899)
+本地 VSM (<网关IP>:8899)
     │  Go backend
     ├── FFmpeg 代理
     ├── MediaMTX (HLS)

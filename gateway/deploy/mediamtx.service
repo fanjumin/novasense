@@ -6,9 +6,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=deployuser
-WorkingDirectory=/home/deployuser/projects/video-stream-manager
-ExecStart=/usr/local/bin/mediamtx /home/deployuser/projects/video-stream-manager/mediamtx/mediamtx.yml
+User=novasense
+WorkingDirectory=/opt/novasense/gateway
+ExecStart=/usr/local/bin/mediamtx /opt/novasense/gateway/mediamtx/mediamtx.yml
 Restart=always
 RestartSec=5
 StartLimitIntervalSec=60

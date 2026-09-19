@@ -259,7 +259,7 @@ func (s *Server) handlePhoneAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract phone base URL from device URL (e.g. http://192.0.2.104:8080/video → http://192.0.2.104:8080)
+	// Extract phone base URL from device URL (e.g. http://192.0.2.10:8080/video → http://192.0.2.10:8080)
 	phoneURL := ""
 	if strings.HasPrefix(device.URL, "http://") || strings.HasPrefix(device.URL, "https://") {
 		parts := strings.Split(device.URL, "/")
@@ -538,6 +538,15 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// requestHostname returns the host the client used to reach this API, without port.
+func requestHostname(r *http.Request) string {
+	host := r.Host
+	if i := strings.LastIndexByte(host, ':'); i > 0 && !strings.HasPrefix(host, "[") {
+		host = host[:i]
+	}
+	return host
+}
+
 func (s *Server) handleProxyStart(w http.ResponseWriter, r *http.Request) {
 	deviceID := strings.TrimPrefix(r.URL.Path, "/api/proxy/start/")
 	deviceID = strings.TrimRight(deviceID, "/")
@@ -573,7 +582,7 @@ func (s *Server) handleProxyStart(w http.ResponseWriter, r *http.Request) {
 	s.json(w, map[string]interface{}{
 		"status":   "started",
 		"deviceId": deviceID,
-		"hls_url":  fmt.Sprintf("http://192.0.2.107:8888/live/%s/index.m3u8", deviceID),
+		"hls_url":  fmt.Sprintf("http://%s:8888/live/%s/index.m3u8", requestHostname(r), deviceID),
 	})
 }
 
@@ -728,7 +737,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"devices":          devices,
 		"online_devices":   onlineCount,
 		"recordings":       recordings,
-		"mediamtx_hls_url": "http://192.0.2.107:8888/",
+		"mediamtx_hls_url": "http://" + requestHostname(r) + ":8888/",
 		"disk":             s.store.GetDiskStats(),
 	})
 }

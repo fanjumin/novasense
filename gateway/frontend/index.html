@@ -191,7 +191,7 @@ a { color:#00c8ff; text-decoration:none; }
     <span class="topbar-title">实时画面</span>
     <span class="topbar-info" id="headerStatus">加载中...</span>
     <span class="topbar-right">
-      <span style="font-size:11px;color:#3a5a6a">192.0.2.107:8899</span>
+      <span style="font-size:11px;color:#3a5a6a" id="hostBadge"></span>
       <button class="btn btn-xs btn-outline" onclick="logout()" style="font-size:11px;padding:2px 8px">退出</button>
     </span>
   </div>
@@ -928,7 +928,7 @@ async function toggleLive(id) {
 
 // ===== WebRTC Playback (WHEP via MediaMTX) =====
 async function startWebRTC(videoEl, streamId) {
-  var mtxHost = '192.0.2.107';
+  var mtxHost = location.hostname;
   var whepURL = 'http://' + mtxHost + ':8889/live/' + streamId + '/whep';
   try {
     var pc = new RTCPeerConnection({
@@ -1239,6 +1239,7 @@ if ('Notification' in window && Notification.permission === 'default') {
   Notification.requestPermission();
 }
 
+var hb=document.getElementById('hostBadge'); if(hb) hb.textContent=location.host;
 renderLive(); loadRecordings(); loadSnapshots(); loadStatus();
 
 // ===== AUDIO TOGGLE =====

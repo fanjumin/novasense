@@ -361,7 +361,6 @@ func (d *Director) buildFilterArgs(sourceID string) []string {
 func detectFFmpegPath() string {
 	// Common paths
 	paths := []string{
-		"/home/deployuser/projects/ffmpeg/ffmpeg-git-6.0-amd64-static/ffmpeg",
 		"ffmpeg",
 		"/usr/bin/ffmpeg",
 	}
