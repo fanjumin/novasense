@@ -170,7 +170,7 @@ EasyKai（易开）平台感知网络插件。提供设备管理、RTMP 推流�
 | `--ns-green` | `#69F0AE` | 在线/活跃 |
 | `--ns-font-display` | Inter | 展示字体 |
 
-完整 Design Tokens 见 `novasense-cloud/static/ns-tokens.css`
+完整 Design Tokens 见 `brand/tokens.css`
 
 ---
 

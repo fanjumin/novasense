@@ -339,7 +339,7 @@ HttpServer（417 行）路由集中于 `HttpServer.kt:94-126, 317-387`：`/`（�
 - **功能色**：星芒青蓝 `#00C8FF`（主）、星云紫 `#7C4DFF`（辅）、荧绿 `#69F0AE`（在线）、琥珀 `#FFAB40`（警告）、星尘红 `#EF5350`（错误）、星际灰 `#5A7288`。
 - 文字三级 + 禁用级、边框三级、字体三族（Inter display / 系统 body / JetBrains Mono code）、间距 4–32px 六级、圆角、青蓝辉光阴影 `--ns-shadow-glow`、统一 150ms 过渡、主渐变青→紫 135°。
 
-同一套令牌被 Gateway 前端（`frontend/ns-tokens.css`）与插件页面内联复用，实现跨端品牌一致性。
+令牌曾以副本形式散落于 Gateway 前端（`frontend/ns-tokens.css`）与插件页面内联；2026-09-19 冗余清理已删除无引用的前端副本，`brand/tokens.css` 为唯一事实源，插件页面继续以内联方式复用同一套值。
 
 ### 7.2 四产品图标与差异化隐喻
 
@@ -459,6 +459,10 @@ README "NovaSense Cloud" 章节（`README.md:92-116`）声称 CRUD、RTMP 推流
 
 **Server Plugin**
 - 权限门控不完备（4 个端点未登录静默回退默认租户）；`gateway_password` 明文存储；i18n yml 文件实际未被消费（`/api/i18n` 返回扁平硬编码键，命名不一致）；`static/` 目录声明了但未建；设置按钮仅 `alert("coming soon")`。
+
+### 13.4 清理记录（2026-09-19，monorepo）
+
+经"属实即删"复核，以下**确证级**项已在单仓中清除（共 3 个 refactor 提交，净删 ≈9100 行 + 729KB 无引用图片）：Agent `src/modern/` 死源码集（1401 行）、零调用 `ComposeUI.kt`、`SensorCollector.sensorDataFlow` 冗余 callbackFlow、孤儿布局 `activity_splash.xml`（v0.8.4 页脚此前误写入该孤儿文件，现移除）、Gateway 不参与编译的 `sdk/xm_sdk_bridge.c`+`sdk/include/`（7185 行，保留必需的 `libxmnetsdk.so`）、`.split_needs_work` 标记、无引用前端资产（`ns-tokens.css` 副本、`logo-novasense.svg`、4 个 icon/splash PNG）、前端 schedule 死块（tab+modal+JS ≈145 行）与 `switchTab` 双实现合并（顺带修复侧栏高亮失效）、`run.sh` 个人路径重写为可移植版、`go mod tidy` 移除 gocv 并修正 pigo/websocket 标注、插件空 `static_folder` 声明。白皮书正文保留清理前的观察原文以维持审计基线。**疑似项未动**（等待产品决策）：`phone.html`、`ruview-ui/viz.html`/`tests/`/`mobile/` 子工程、`i18n/*.yml`、双份 `auto.crt`、`images/手机*.png`、`main.go.bak`（未入库）。安全类条目（明文密码/硬编码 IP/门控缺口）不受本次清理影响，仍待处理。
 
 ---
 
