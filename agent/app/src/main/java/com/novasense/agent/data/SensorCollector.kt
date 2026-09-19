@@ -9,12 +9,9 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.BatteryManager
 import android.os.Build
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.callbackFlow
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -132,42 +129,5 @@ class SensorCollector(private val context: Context) {
 
     fun refreshBattery() {
         readBattery()
-    }
-
-    val sensorDataFlow: Flow<SensorData> = callbackFlow {
-        val listener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                updateSensorValue(event)
-                trySend(_sensorData.value)
-            }
-
-            override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
-        }
-
-        val sensors = listOf(
-            Sensor.TYPE_LIGHT,
-            Sensor.TYPE_AMBIENT_TEMPERATURE,
-            Sensor.TYPE_PRESSURE,
-            Sensor.TYPE_RELATIVE_HUMIDITY,
-            Sensor.TYPE_ACCELEROMETER,
-            Sensor.TYPE_GYROSCOPE
-        )
-
-        val registered = mutableListOf<Sensor>()
-        for (type in sensors) {
-            val sensor = sensorManager.getDefaultSensor(type)
-            if (sensor != null) {
-                sensorManager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_NORMAL)
-                registered.add(sensor)
-            }
-        }
-
-        readBattery()
-
-        awaitClose {
-            for (s in registered) {
-                sensorManager.unregisterListener(listener, s)
-            }
-        }
     }
 }
